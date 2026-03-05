@@ -1,80 +1,132 @@
 # soinn_slip_learner
 
-### **File Structure**
+SOINN-based slip learning package for ROS 2, with C++ orchestration/feature nodes and Python model nodes.
+
+## Current architecture (implemented)
+
+### C++ nodes
+
+- `gridmap_feature_extractor_node`
+        - Subscribes to `/elevation_map` (`grid_map_msgs/msg/GridMap`)
+        - Caches latest map
+        - Provides:
+                - `get_cell_features` (`GetCellFeatures.srv`)
+                - `get_map_features` (`GetMapFeatures.srv`)
+
+- `robot_experience_collector_node`
+        - Computes slip from TF motion (`odom` vs `map` reference)
+        - Queries `get_cell_features` at the midpoint position
+        - Publishes training samples to `/experience_samples` (`std_msgs/msg/Float32MultiArray`)
+        - Sample format: `[slip, f0, f1, ...]`
+
+- `slip_prediction_manager`
+        - Calls `get_map_features`
+        - Calls `predict_batch`
+        - Publishes flat `(x, y, pred)` triples on `/gridmap_with_predictions`
+        - Output format: `[x0, y0, p0, x1, y1, p1, ...]`
+
+### Python nodes
+
+- `soinn_training_node.py`
+        - Subscribes to `/experience_samples`
+        - Trains `SoinnPlus`
+        - Saves model periodically and on shutdown (atomic write)
+
+- `soinn_prediction_node.py`
+        - Provides `predict_batch`
+        - Loads/reloads serialized model from disk
+        - Predicts slip for feature batches
+
+- `latent_feature_extractor_node.py`
+        - Placeholder node (currently no feature extraction logic)
+
+## Services
+
+- `GetCellFeatures.srv`
+        - Request: `geometry_msgs/Point position`
+        - Response: `features`, `success`, `message`
+
+- `GetMapFeatures.srv`
+        - Request: empty
+        - Response:
+                - `features` (flattened feature vectors)
+                - `positions` (`geometry_msgs/Point[]`, aligned with feature vectors)
+                - `feature_dim`
+                - `success`, `message`
+
+- `PredictBatch.srv`
+        - Request: `features` (flattened), `feature_dim`
+        - Response: `predictions`, `success`, `message`
+
+## Data flow
+
+### Training path
+
+1. `gridmap_feature_extractor_node` keeps latest map.
+2. `robot_experience_collector_node` computes slip from TF interval.
+3. Collector queries `get_cell_features` at midpoint position.
+4. Collector publishes `[slip + features]` to `/experience_samples`.
+5. `soinn_training_node.py` trains and persists the model.
+
+### Prediction path
+
+1. `slip_prediction_manager` requests full map features via `get_map_features`.
+2. Manager calls `predict_batch` on `soinn_prediction_node.py`.
+3. Manager publishes mapped predictions on `/gridmap_with_predictions`.
+
+## Launch files
+
+In `launch/`:
+
+- `training.launch.py` – training-oriented stack
+- `prediction.launch.py` – prediction-oriented stack
+- `full_system.launch.py` – all package nodes
+- `all.launch.py` – includes:
+        - `coppelia_ros2_control`
+        - `elevation_mapping`
+        - `full_system.launch.py`
+
+Run:
+
+```bash
+ros2 launch soinn_slip_learner all.launch.py
+```
+
+## Parameters
+
+Main parameters are in `config/soinn_params.yaml`:
+
+- `gridmap_feature_extractor_node`
+        - `elevation_map_topic`
+        - `feature_service_name`
+        - `map_feature_service_name`
+        - `feature_radius`
+
+- `robot_experience_collector_node`
+        - `wheel_separation`, `robot_frame`, `odom_frame`, `reference_frame`
+        - `movement_threshold`, `collector_period_sec`
+        - `sample_topic`, `feature_service_name`
+
+- `soinn_training_node`
+        - `model_path`, `init_new_model`, `sample_topic`
+        - `input_dimension`, `max_edge_age`, `auto_save_period_sec`
+
+- `soinn_prediction_node`
+        - `model_path`, `service_name`, `feature_dim`, `model_reload_period_sec`
+
+- `slip_prediction_manager`
+        - `output_topic`, `map_feature_service_name`, `predict_batch_service_name`, `prediction_period_sec`
+
+## Repository structure (high level)
+
 ```bash
 soinn_slip_learner/
-├── CMakeLists.txt                # For C++ nodes
+├── CMakeLists.txt
 ├── package.xml
-├── launch/
-│   ├── training.launch.py
-│   ├── prediction.launch.py
-│   └── full_system.launch.py
 ├── config/
-│   ├── soinn_params.yaml
-│   └── feature_extractor.yaml
-├── include/soinn_slip_learner/   # C++ headers
-├── src/                          # C++ source files
-│   ├── gridmap_feature_extractor.cpp
-│   ├── robot_experience_collector.cpp
-│   └── slip_prediction_manager.cpp
-├── soinn_slip_learner/           # Python scripts
-│   ├── latent_feature_extractor_node.py
-│   ├── feature_aggregator_node.py
-│   ├── soinn_training_node.py
-│   └── soinn_prediction_node.py
+├── launch/
 ├── models/
-│   └── latent_feature_model.onnx
-└── README.md
+├── soinn_slip_learner/     # Python nodes and SOINN implementation
+├── src/                    # C++ nodes
+└── srv/                    # ROS service definitions
 ```
-
----
-
-### **Node Architecture**
-#### **C++ Nodes** (Performance-critical)
-| Node Name                          | Purpose                                                                                     | Inputs                                  | Outputs                                 |
-|------------------------------------|---------------------------------------------------------------------------------------------|-----------------------------------------|-----------------------------------------|
-| `gridmap_feature_extractor_node`   | Extracts handcrafted features (elevation, roughness, etc.) from gridmap.                     | `/gridmap`                              | Services: `get_cell_features`, `get_grid_features` |
-| `robot_experience_collector_node`  | Collects (feature, slip) pairs for SOINN training (uses your existing C++ slip calculation).   | `/tf`, `/odometry`, `get_cell_features_combined` | `/experience_samples`                   |
-| `slip_prediction_manager`         | Orchestrates feature extraction and prediction for the full gridmap.                      | Service: `get_grid_features_combined`, `predict_batch` | `/gridmap_with_predictions`             |
-
-#### **Python Nodes** (ML/SOINN or feature aggregation)
-| Node Name                          | Purpose                                                                                     | Inputs                                  | Outputs                                 |
-|------------------------------------|---------------------------------------------------------------------------------------------|-----------------------------------------|-----------------------------------------|
-| `latent_feature_extractor_node`    | Extracts latent features using a pretrained model.                                         | `/gridmap`                              | Services: `get_cell_latent_features`, `get_grid_latent_features` |
-| `feature_aggregator_node`          | Combines handcrafted (C++) and latent (Python) features for cells/gridmaps.                 | Services: `get_cell_features`, `get_cell_latent_features`, `get_grid_features`, `get_grid_latent_features` | Services: `get_cell_features_combined`, `get_grid_features_combined` |
-| `soinn_training_node`              | Trains the SOINN model with experience samples (combined features + slip).                   | `/experience_samples`                  | (Updated SOINN model)                   |
-| `soinn_prediction_node`            | Provides batch prediction of slip using SOINN.                                             | Service: `predict_batch`               | Predicted slip values                   |
-
----
-
-### **Data Flow**
-#### **1. Training Workflow**
-```
-/gridmap → gridmap_feature_extractor_node (C++) --(handcrafted)-->
-                latent_feature_extractor_node (Python) --(latent)-->
-                        feature_aggregator_node (Python) --(combined)-->
-                                robot_experience_collector_node (C++) --(experience_samples)-->
-                                        soinn_training_node (Python)
-```
-
-#### **2. Prediction Workflow**
-```
-/gridmap → gridmap_feature_extractor_node (C++) --(handcrafted)-->
-                latent_feature_extractor_node (Python) --(latent)-->
-                        feature_aggregator_node (Python) --(combined)-->
-                                slip_prediction_manager (C++) --(predictions)-->
-                                        /gridmap_with_predictions
-```
-
----
-
-### **Services**
-| Service Name                     | Input                          | Output                          | Provider Node                     |
-|-----------------------------------|--------------------------------|---------------------------------|-----------------------------------|
-| `get_cell_features`               | `geometry_msgs/Point` cell index | `float32[]` handcrafted features | `gridmap_feature_extractor_node`  |
-| `get_grid_features`               | `std_msgs/Header`              | `float32[]` handcrafted features | `gridmap_feature_extractor_node`  |
-| `get_cell_latent_features`        | `geometry_msgs/Point` cell index | `float32[]` latent features     | `latent_feature_extractor_node`   |
-| `get_grid_latent_features`        | `std_msgs/Header`              | `float32[]` latent features     | `latent_feature_extractor_node`   |
-| `get_cell_features_combined`      | `geometry_msgs/Point` cell index | `float32[]` combined features   | `feature_aggregator_node`         |
-| `get_grid_features_combined`      | `std_msgs/Header`              | `float32[]` combined features   | `feature_aggregator_node`         |
-| `predict_batch`                   | `float32[]` features           | `float32[]` predictions         | `soinn_prediction_node`           |

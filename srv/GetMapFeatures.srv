@@ -1,0 +1,8 @@
+# Request
+---
+# Response
+std_msgs/Float32MultiArray features
+geometry_msgs/Point[] positions
+int32 feature_dim
+std_msgs/Bool success
+std_msgs/String message
