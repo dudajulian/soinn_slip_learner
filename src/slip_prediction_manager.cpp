@@ -1,12 +1,16 @@
 #include <memory>
 #include <algorithm>
 #include <chrono>
+#include <limits>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "grid_map_core/grid_map_core.hpp"
+#include "grid_map_msgs/msg/grid_map.hpp"
+#include "grid_map_ros/grid_map_ros.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/float32_multi_array.hpp"
 
 #include "soinn_slip_learner/srv/get_map_features.hpp"
 #include "soinn_slip_learner/srv/predict_batch.hpp"
@@ -15,17 +19,27 @@ class SlipPredictionManagerNode : public rclcpp::Node {
 public:
   SlipPredictionManagerNode()
   : Node("slip_prediction_manager") {
-    this->declare_parameter("output_topic", "/gridmap_with_predictions");
+    this->declare_parameter("slip_prediction_map_topic", "/slip_prediction_map");
+    this->declare_parameter("elevation_map_topic", "/elevation_map");
+    this->declare_parameter("slip_layer_name", "slip_prediction");
     this->declare_parameter("map_feature_service_name", "get_map_features");
     this->declare_parameter("predict_batch_service_name", "predict_batch");
     this->declare_parameter("prediction_period_sec", 1.0);
 
-    this->get_parameter("output_topic", output_topic_);
+    this->get_parameter("slip_prediction_map_topic", slip_prediction_map_topic_);
+    this->get_parameter("elevation_map_topic", elevation_map_topic_);
+    this->get_parameter("slip_layer_name", slip_layer_name_);
     this->get_parameter("map_feature_service_name", map_feature_service_name_);
     this->get_parameter("predict_batch_service_name", predict_batch_service_name_);
     this->get_parameter("prediction_period_sec", prediction_period_sec_);
 
-    prediction_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>(output_topic_, 10);
+    slip_map_pub_ = this->create_publisher<grid_map_msgs::msg::GridMap>(
+      slip_prediction_map_topic_, 10);
+
+    map_sub_ = this->create_subscription<grid_map_msgs::msg::GridMap>(
+      elevation_map_topic_,
+      rclcpp::SensorDataQoS(),
+      std::bind(&SlipPredictionManagerNode::handle_map_update, this, std::placeholders::_1));
 
     map_feature_client_ = this->create_client<soinn_slip_learner::srv::GetMapFeatures>(
       map_feature_service_name_);
@@ -40,6 +54,14 @@ public:
   }
 
 private:
+  void handle_map_update(const grid_map_msgs::msg::GridMap::SharedPtr msg) {
+    grid_map::GridMap map;
+    grid_map::GridMapRosConverter::fromMessage(*msg, map);
+    std::scoped_lock<std::mutex> lock(map_mutex_);
+    latest_map_ = map;
+    has_map_ = true;
+  }
+
   void timer_callback() {
     if (request_in_flight_) {
       return;
@@ -127,15 +149,7 @@ private:
         return;
       }
 
-      std_msgs::msg::Float32MultiArray out;
-      out.data.reserve(n * 3U);
-      for (size_t i = 0; i < n; ++i) {
-        out.data.push_back(static_cast<float>((*positions)[i].x));
-        out.data.push_back(static_cast<float>((*positions)[i].y));
-        out.data.push_back(response->predictions.data[i]);
-      }
-
-      prediction_pub_->publish(out);
+      publish_slip_prediction_map(*positions, response->predictions.data, n);
     } catch (const std::exception & ex) {
       RCLCPP_WARN(this->get_logger(), "Failed to process predict_batch response: %s", ex.what());
     }
@@ -143,14 +157,63 @@ private:
     request_in_flight_ = false;
   }
 
+  void publish_slip_prediction_map(
+    const std::vector<geometry_msgs::msg::Point> & positions,
+    const std::vector<float> & predictions,
+    size_t n)
+  {
+    grid_map::GridMap map;
+    {
+      std::scoped_lock<std::mutex> lock(map_mutex_);
+      if (!has_map_) {
+        RCLCPP_WARN_THROTTLE(
+          this->get_logger(), *this->get_clock(), 2000,
+          "No elevation map available to publish prediction layer");
+        return;
+      }
+      map = latest_map_;
+    }
+
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    if (!map.exists(slip_layer_name_)) {
+      map.add(slip_layer_name_, nan);
+    } else {
+      map[slip_layer_name_].setConstant(nan);
+    }
+
+    for (size_t i = 0; i < n; ++i) {
+      const grid_map::Position position(
+        static_cast<double>(positions[i].x),
+        static_cast<double>(positions[i].y));
+      grid_map::Index index;
+      if (!map.getIndex(position, index)) {
+        continue;
+      }
+      map.at(slip_layer_name_, index) = predictions[i];
+    }
+
+    auto msg = grid_map::GridMapRosConverter::toMessage(map);
+    if (!msg) {
+      return;
+    }
+    slip_map_pub_->publish(*msg);
+  }
+
   bool request_in_flight_{false};
   double prediction_period_sec_{1.0};
-  std::string output_topic_;
+  std::string slip_prediction_map_topic_;
+  std::string elevation_map_topic_;
+  std::string slip_layer_name_;
   std::string map_feature_service_name_;
   std::string predict_batch_service_name_;
 
+  bool has_map_{false};
+  grid_map::GridMap latest_map_;
+  std::mutex map_mutex_;
+
   rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr prediction_pub_;
+  rclcpp::Subscription<grid_map_msgs::msg::GridMap>::SharedPtr map_sub_;
+  rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr slip_map_pub_;
   rclcpp::Client<soinn_slip_learner::srv::GetMapFeatures>::SharedPtr map_feature_client_;
   rclcpp::Client<soinn_slip_learner::srv::PredictBatch>::SharedPtr predict_batch_client_;
 };

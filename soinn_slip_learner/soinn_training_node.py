@@ -9,7 +9,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray
 
-from soinn_slip_learner.soinnplus import SoinnPlus
+from soinn_py import SoinnPlus
 
 
 class SoinnTrainingNode(Node):

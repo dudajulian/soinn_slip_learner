@@ -8,7 +8,7 @@ gridmap_feature_extractor_node:
 soinn_training_node:
   ros__parameters:
     model_path: "models/soinn_model.pkl"
-    init_new_model: true
+    init_new_model: false
     sample_topic: "/experience_samples"
     input_dimension: 0
     max_edge_age: 50
@@ -28,13 +28,16 @@ robot_experience_collector_node:
     odom_frame: "odom"
     reference_frame: "map"
     movement_threshold: 0.05
-    collector_period_sec: 0.1
+    collector_period_sec: 1.0
     sample_topic: "/experience_samples"
     feature_service_name: "get_cell_features"
 
 slip_prediction_manager:
   ros__parameters:
-    output_topic: "/gridmap_with_predictions"
+    prediction_points_topic: "/slip_prediction_points"
+    slip_prediction_map_topic: "/slip_prediction_map"
+    elevation_map_topic: "/elevation_map"
+    slip_layer_name: "slip_prediction"
     map_feature_service_name: "get_map_features"
     predict_batch_service_name: "predict_batch"
-    prediction_period_sec: 1.0
+    prediction_period_sec: 10.0

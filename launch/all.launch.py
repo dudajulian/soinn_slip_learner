@@ -52,8 +52,19 @@ def generate_launch_description() -> LaunchDescription:
         )
     )
 
+    rviz_config_dir = get_package_share_directory('elevation_mapping')
+    rviz_config_file = os.path.join(rviz_config_dir, 'rviz2', 'custom_rviz2.rviz')
+    rviz = Node(
+        package= 'rviz2',
+        executable= 'rviz2',
+        name= 'rviz',
+        arguments= ['--display-config', rviz_config_file],
+        output= 'screen'
+    )
+
     return LaunchDescription([
         launch_robot_control,
         elevation_mapping,
         full_system,
+        rviz,
     ])

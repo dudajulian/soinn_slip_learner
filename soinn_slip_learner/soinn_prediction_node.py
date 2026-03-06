@@ -10,7 +10,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool, Float32MultiArray, String
 
-from soinn_slip_learner.soinnplus import SoinnPlus
+from soinn_py import SoinnPlus
 from soinn_slip_learner.srv import PredictBatch
 
 
