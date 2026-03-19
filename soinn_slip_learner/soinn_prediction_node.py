@@ -122,18 +122,23 @@ class SoinnPredictionNode(Node):
 
         batch = raw.reshape((-1, feature_dim))
         predictions = []
+        confidence_scores = []
         for index, signal in enumerate(batch):
             try:
-                prediction = self.soinn.inference(signal)
+                prediction, confidence = self.soinn.inference(signal)
                 if prediction is None:
                     predictions.append(float('nan'))
+                    confidence_scores.append(float('nan'))
                 else:
                     predictions.append(float(prediction))
+                    confidence_scores.append(float(confidence))
             except Exception as error:
                 self.get_logger().error(f'Inference failed for sample index {index}: {error}')
                 predictions.append(float('nan'))
+                confidence_scores.append(float('nan'))
 
         response.predictions = Float32MultiArray(data=predictions)
+        response.confidence_scores = Float32MultiArray(data=confidence_scores)
         response.success = Bool(data=True)
         response.message = String(data=f'Produced {len(predictions)} predictions')
         return response

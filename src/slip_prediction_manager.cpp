@@ -22,6 +22,7 @@ public:
     this->declare_parameter("slip_prediction_map_topic", "/slip_prediction_map");
     this->declare_parameter("elevation_map_topic", "/elevation_map");
     this->declare_parameter("slip_layer_name", "slip_prediction");
+    this->declare_parameter("confidence_layer_name", "slip_confidence");
     this->declare_parameter("map_feature_service_name", "get_map_features");
     this->declare_parameter("predict_batch_service_name", "predict_batch");
     this->declare_parameter("prediction_period_sec", 1.0);
@@ -29,6 +30,7 @@ public:
     this->get_parameter("slip_prediction_map_topic", slip_prediction_map_topic_);
     this->get_parameter("elevation_map_topic", elevation_map_topic_);
     this->get_parameter("slip_layer_name", slip_layer_name_);
+    this->get_parameter("confidence_layer_name", confidence_layer_name_);
     this->get_parameter("map_feature_service_name", map_feature_service_name_);
     this->get_parameter("predict_batch_service_name", predict_batch_service_name_);
     this->get_parameter("prediction_period_sec", prediction_period_sec_);
@@ -143,13 +145,28 @@ private:
         return;
       }
 
-      const size_t n = std::min(positions->size(), response->predictions.data.size());
-      if (n == 0U) {
+      const size_t position_count = positions->size();
+      const size_t prediction_count = response->predictions.data.size();
+      const size_t confidence_count = response->confidence_scores.data.size();
+
+      if (position_count == 0U || prediction_count == 0U || confidence_count == 0U) {
         request_in_flight_ = false;
         return;
       }
 
-      publish_slip_prediction_map(*positions, response->predictions.data, n);
+      if (position_count != prediction_count || prediction_count != confidence_count) {
+        RCLCPP_ERROR(
+          this->get_logger(),
+          "Size mismatch: positions=%zu predictions=%zu confidence_scores=%zu",
+          position_count, prediction_count, confidence_count);
+        request_in_flight_ = false;
+        return;
+      }
+
+      const size_t n = position_count;
+
+      publish_slip_prediction_map(
+        *positions, response->predictions.data, response->confidence_scores.data, n);
     } catch (const std::exception & ex) {
       RCLCPP_WARN(this->get_logger(), "Failed to process predict_batch response: %s", ex.what());
     }
@@ -160,6 +177,7 @@ private:
   void publish_slip_prediction_map(
     const std::vector<geometry_msgs::msg::Point> & positions,
     const std::vector<float> & predictions,
+    const std::vector<float> & confidence_scores,
     size_t n)
   {
     grid_map::GridMap map;
@@ -180,6 +198,11 @@ private:
     } else {
       map[slip_layer_name_].setConstant(nan);
     }
+    if (!map.exists(confidence_layer_name_)) {
+      map.add(confidence_layer_name_, nan);
+    } else {
+      map[confidence_layer_name_].setConstant(nan);
+    }
 
     for (size_t i = 0; i < n; ++i) {
       const grid_map::Position position(
@@ -190,6 +213,7 @@ private:
         continue;
       }
       map.at(slip_layer_name_, index) = predictions[i];
+      map.at(confidence_layer_name_, index) = confidence_scores[i];
     }
 
     auto msg = grid_map::GridMapRosConverter::toMessage(map);
@@ -204,6 +228,7 @@ private:
   std::string slip_prediction_map_topic_;
   std::string elevation_map_topic_;
   std::string slip_layer_name_;
+  std::string confidence_layer_name_;
   std::string map_feature_service_name_;
   std::string predict_batch_service_name_;
 

@@ -4,5 +4,6 @@ int32 feature_dim
 ---
 # Response
 std_msgs/Float32MultiArray predictions
+std_msgs/Float32MultiArray confidence_scores
 std_msgs/Bool success
 std_msgs/String message

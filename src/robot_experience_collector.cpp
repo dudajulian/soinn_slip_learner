@@ -19,7 +19,7 @@ class RobotExperienceCollectorNode : public rclcpp::Node {
 public:
   RobotExperienceCollectorNode()
   : Node("robot_experience_collector_node") {
-    this->declare_parameter("wheel_separation", 1.0);
+    this->declare_parameter("wheel_separation", 0.3);
     this->declare_parameter("robot_frame", "base_link");
     this->declare_parameter("odom_frame", "odom");
     this->declare_parameter("reference_frame", "map");

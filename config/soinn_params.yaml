@@ -3,7 +3,7 @@ gridmap_feature_extractor_node:
     elevation_map_topic: "/elevation_map"
     feature_service_name: "get_cell_features"
     map_feature_service_name: "get_map_features"
-    feature_radius: 0.3
+    feature_radius: 0.8
 
 soinn_training_node:
   ros__parameters:
@@ -23,12 +23,12 @@ soinn_prediction_node:
 
 robot_experience_collector_node:
   ros__parameters:
-    wheel_separation: 1.0
+    wheel_separation: 0.512
     robot_frame: "base_link"
     odom_frame: "odom"
     reference_frame: "map"
     movement_threshold: 0.05
-    collector_period_sec: 1.0
+    collector_period_sec: 0.5
     sample_topic: "/experience_samples"
     feature_service_name: "get_cell_features"
 

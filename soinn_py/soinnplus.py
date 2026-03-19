@@ -111,9 +111,10 @@ class SoinnPlus:
         # the closest node
         sim_threshold = self.calculate_similarity_threshold(winner[0], on_inference=True) 
         if sq_dist[0] > sim_threshold:
-            return None
+            return None, 0.0
         else:
-            return self.nodes[winner[0]][0,0]
+            confidence = 1 - np.sqrt(sq_dist[0]) / (np.sqrt(sim_threshold) + 1e-10) # Add small epsilon to avoid division by zero
+            return self.nodes[winner[0]][0,0], confidence
     
 
     def input_signal(self, signal):

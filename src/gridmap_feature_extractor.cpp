@@ -22,7 +22,7 @@ public:
     this->declare_parameter("elevation_map_topic", "/elevation_map");
     this->declare_parameter("feature_service_name", "get_cell_features");
     this->declare_parameter("map_feature_service_name", "get_map_features");
-    this->declare_parameter("feature_radius", 0.3);
+    this->declare_parameter("feature_radius", 0.5);
 
     this->get_parameter("elevation_map_topic", elevation_map_topic_);
     this->get_parameter("feature_service_name", feature_service_name_);
