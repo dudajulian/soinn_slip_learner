@@ -1,0 +1,17 @@
+repositories:
+  elevation_mapping:
+    type: git
+    url: git@github.com:Muhammad540/elevation_mapping.git
+    version: main
+  grid_map:
+    type: git
+    url: git@github.com:ANYbotics/grid_map.git
+    version: humble
+  kindr_ros:
+    type: git
+    url: git@github.com:SivertHavso/kindr_ros.git
+    version: galactic
+  kindr:
+    type: git
+    url: git@github.com:ANYbotics/kindr.git
+    version: release

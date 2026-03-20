@@ -2,6 +2,44 @@
 
 SOINN-based slip learning package for ROS 2, with C++ orchestration/feature nodes and Python model nodes.
 
+## Installation
+System Dependencies:
+```bash
+sudo apt install python3-networkx 
+```
+
+From your workspace directory import dependency repositories:
+```bash
+vcs import src < soinn_slip_learner/.repos
+```
+
+The kindr package needs to be build with make instead of colon. To avoid building it with
+later on, add a `COLCON_IGNORE` file to it.
+```bash
+cd src/kindr
+touch COLCON_IGNORE
+mkdir -p build
+cd build
+cmake .. -DUSE_CMAKE=true
+sudo make install
+export CMAKE_PREFIX_PATH=/usr/local:$CMAKE_PREFIX_PATH
+cd ../../../
+```
+It is a good idea to add the CMAKE_PREFIX_PATH to your ~/.bashrc
+```bash
+echo "export CMAKE_PREFIX_PATH=/usr/local:#CMAKE_PREFIX_PATH" >> ~/.bashrc
+source ~/.bashrc
+```
+
+Then build your workspace with:
+```bash
+colcon build \
+    --merge-install \
+    --parallel-workers 2 \
+    --packages-up-to soinn_slip_learner\
+    --cmake-args "-DCMAKE_BUILD_TYPE=Release" "-DCMAKE_EXPORT_COMPILE_COMMANDS=On"
+```
+
 ## Current architecture (implemented)
 
 ### C++ nodes
@@ -20,10 +58,10 @@ SOINN-based slip learning package for ROS 2, with C++ orchestration/feature node
         - Sample format: `[slip, f0, f1, ...]`
 
 - `slip_prediction_manager`
+        - Subscribes to `/elevation_map` (`grid_map_msgs/msg/GridMap`)
         - Calls `get_map_features`
         - Calls `predict_batch`
-        - Publishes flat `(x, y, pred)` triples on `/gridmap_with_predictions`
-        - Output format: `[x0, y0, p0, x1, y1, p1, ...]`
+        - Publishes a `grid_map_msgs/msg/GridMap` on `/slip_prediction_map` with added `slip_prediction` and `slip_confidence` layers
 
 ### Python nodes
 
@@ -56,7 +94,7 @@ SOINN-based slip learning package for ROS 2, with C++ orchestration/feature node
 
 - `PredictBatch.srv`
         - Request: `features` (flattened), `feature_dim`
-        - Response: `predictions`, `success`, `message`
+        - Response: `predictions`, `confidence_scores`, `success`, `message`
 
 ## Data flow
 
@@ -72,7 +110,7 @@ SOINN-based slip learning package for ROS 2, with C++ orchestration/feature node
 
 1. `slip_prediction_manager` requests full map features via `get_map_features`.
 2. Manager calls `predict_batch` on `soinn_prediction_node.py`.
-3. Manager publishes mapped predictions on `/gridmap_with_predictions`.
+3. Manager publishes a `GridMap` with prediction and confidence layers on `/slip_prediction_map`.
 
 ## Launch files
 
@@ -115,18 +153,6 @@ Main parameters are in `config/soinn_params.yaml`:
         - `model_path`, `service_name`, `feature_dim`, `model_reload_period_sec`
 
 - `slip_prediction_manager`
-        - `output_topic`, `map_feature_service_name`, `predict_batch_service_name`, `prediction_period_sec`
-
-## Repository structure (high level)
-
-```bash
-soinn_slip_learner/
-├── CMakeLists.txt
-├── package.xml
-├── config/
-├── launch/
-├── models/
-├── soinn_slip_learner/     # Python nodes and SOINN implementation
-├── src/                    # C++ nodes
-└── srv/                    # ROS service definitions
-```
+        - `slip_prediction_map_topic`, `elevation_map_topic`
+        - `slip_layer_name`, `confidence_layer_name`
+        - `map_feature_service_name`, `predict_batch_service_name`, `prediction_period_sec`
