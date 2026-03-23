@@ -13,7 +13,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
-#include "soinn_slip_learner/srv/get_cell_features.hpp"
+#include "soislip_interfaces/srv/get_cell_features.hpp"
 
 class RobotExperienceCollectorNode : public rclcpp::Node {
 public:
@@ -38,7 +38,7 @@ public:
     this->get_parameter("collector_period_sec", collector_period_sec_);
 
     sample_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>(sample_topic_, 10);
-    feature_client_ = this->create_client<soinn_slip_learner::srv::GetCellFeatures>(feature_service_name_);
+    feature_client_ = this->create_client<soislip_interfaces::srv::GetCellFeatures>(feature_service_name_);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -82,12 +82,12 @@ private:
           feature_service_name_.c_str());
       } else {
         geometry_msgs::msg::Point midpoint = calculate_midpoint_position(transform_last_ref_, current_ref);
-        auto request = std::make_shared<soinn_slip_learner::srv::GetCellFeatures::Request>();
+        auto request = std::make_shared<soislip_interfaces::srv::GetCellFeatures::Request>();
         request->position = midpoint;
 
         feature_client_->async_send_request(
           request,
-          [this, slip](rclcpp::Client<soinn_slip_learner::srv::GetCellFeatures>::SharedFuture future) {
+          [this, slip](rclcpp::Client<soislip_interfaces::srv::GetCellFeatures>::SharedFuture future) {
             try {
               auto response = future.get();
               if (!response->success.data) {
@@ -217,7 +217,7 @@ private:
 
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr sample_pub_;
-  rclcpp::Client<soinn_slip_learner::srv::GetCellFeatures>::SharedPtr feature_client_;
+  rclcpp::Client<soislip_interfaces::srv::GetCellFeatures>::SharedPtr feature_client_;
 
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;

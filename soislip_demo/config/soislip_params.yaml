@@ -5,21 +5,27 @@ gridmap_feature_extractor_node:
     map_feature_service_name: "get_map_features"
     feature_radius: 0.8
 
+# latent_feature_extractor_node:
+#   ros__parameters:
+#     model_path: "src/soinn_slip_learner/soislip_demo/models/latent_feature_model.onnx"
+#     input_topic: "/gridmap"
+#     latent_dim: 32
+
 soinn_training_node:
   ros__parameters:
-    model_path: "models/soinn_model.pkl"
+    model_path: "src/soinn_slip_learner/soislip_demo/models/soinn_model.pkl"
     init_new_model: false
     sample_topic: "/experience_samples"
     input_dimension: 0
     max_edge_age: 50
-    auto_save_period_sec: 60.0
+    auto_save_period_sec: 120.0
 
 soinn_prediction_node:
   ros__parameters:
-    model_path: "models/soinn_model.pkl"
+    model_path: "src/soinn_slip_learner/soislip_demo/models/soinn_model.pkl"
     service_name: "predict_batch"
     feature_dim: 0
-    model_reload_period_sec: 5.0
+    model_reload_period_sec: 20.0
 
 robot_experience_collector_node:
   ros__parameters:
@@ -40,4 +46,4 @@ slip_prediction_manager:
     slip_layer_name: "slip_prediction"
     map_feature_service_name: "get_map_features"
     predict_batch_service_name: "predict_batch"
-    prediction_period_sec: 10.0
+    prediction_period_sec: 5.0

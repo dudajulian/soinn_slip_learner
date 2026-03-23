@@ -1,5 +1,0 @@
-latent_feature_extractor_node:
-  ros__parameters:
-    model_path: "models/latent_feature_model.onnx"
-    input_topic: "/gridmap"
-    latent_dim: 32

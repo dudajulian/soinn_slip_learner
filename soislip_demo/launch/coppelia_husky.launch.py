@@ -10,6 +10,9 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description() -> LaunchDescription:
+    demo_share = get_package_share_directory('soislip_demo')
+
+    huksy_resources_dir = os.path.join(demo_share, 'resources', 'husky')
     launch_robot_control = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([
@@ -20,15 +23,14 @@ def generate_launch_description() -> LaunchDescription:
         ),
         launch_arguments={
             'controller_name': 'platform_velocity_controller',
-            'controller_config_path': 'resources/husky/control.yaml',
-            'robot_description_path': 'resources/husky/robot.urdf',
+            'controller_config_path': os.path.join(huksy_resources_dir, 'control.yaml'),
+            'robot_description_path': os.path.join(huksy_resources_dir, 'robot.urdf'),       
         }.items(),
     )
 
-    elevation_config_dir = get_package_share_directory('soinn_plus_traverse')
-    elevation_config_dir = os.path.join(elevation_config_dir, 'config')
+    elevation_config_dir = os.path.join(demo_share, 'config', 'elevation_mapping')
     elevation_params = [
-        os.path.join(elevation_config_dir, 'zed_create_robot.yaml'),
+        os.path.join(elevation_config_dir, 'zed2_robot.yaml'),
         os.path.join(elevation_config_dir, 'elevation_map.yaml'),
         os.path.join(elevation_config_dir, 'aslam.yaml'),
         os.path.join(elevation_config_dir, 'postprocessor_pipeline.yaml'),
@@ -42,18 +44,36 @@ def generate_launch_description() -> LaunchDescription:
         parameters=elevation_params,
     )
 
-    full_system = IncludeLaunchDescription(
+    soislip_core = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([
-                FindPackageShare('soinn_slip_learner'),
+                FindPackageShare('soislip_core'),
                 'launch',
-                'full_system.launch.py',
+                'soislip.launch.py',
             ])
-        )
+        ),
+        launch_arguments={
+            'params_file': os.path.join(demo_share, 'config', 'soislip_params.yaml'),
+        }.items(),
     )
 
-    rviz_config_dir = get_package_share_directory('elevation_mapping')
-    rviz_config_file = os.path.join(rviz_config_dir, 'rviz2', 'custom_rviz2.rviz')
+    teleop_joy = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([
+                FindPackageShare('teleop_twist_joy'),
+                'launch',
+                'teleop-launch.py',
+            ])
+        ),
+        launch_arguments={
+            'joy_config': 'xbox',
+            'publish_stamped_twist': 'true',
+            'use_sim_time': 'true',
+            'joy_vel': '/platform_velocity_controller/cmd_vel',
+        }.items(),
+    )
+
+    rviz_config_file = os.path.join(demo_share, 'config', 'rviz', 'custom_rviz2.rviz')
     rviz = Node(
         package= 'rviz2',
         executable= 'rviz2',
@@ -65,6 +85,7 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription([
         launch_robot_control,
         elevation_mapping,
-        full_system,
+        soislip_core,
         rviz,
+        teleop_joy,
     ])

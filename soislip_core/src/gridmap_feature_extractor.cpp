@@ -12,8 +12,8 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include "soinn_slip_learner/srv/get_cell_features.hpp"
-#include "soinn_slip_learner/srv/get_map_features.hpp"
+#include "soislip_interfaces/srv/get_cell_features.hpp"
+#include "soislip_interfaces/srv/get_map_features.hpp"
 
 class GridmapFeatureExtractorNode : public rclcpp::Node {
 public:
@@ -34,7 +34,7 @@ public:
       rclcpp::SensorDataQoS(),
       std::bind(&GridmapFeatureExtractorNode::callback, this, std::placeholders::_1));
 
-    service_ = this->create_service<soinn_slip_learner::srv::GetCellFeatures>(
+    service_ = this->create_service<soislip_interfaces::srv::GetCellFeatures>(
       feature_service_name_,
       std::bind(
         &GridmapFeatureExtractorNode::handle_get_cell_features,
@@ -42,7 +42,7 @@ public:
         std::placeholders::_1,
         std::placeholders::_2));
 
-    map_service_ = this->create_service<soinn_slip_learner::srv::GetMapFeatures>(
+    map_service_ = this->create_service<soislip_interfaces::srv::GetMapFeatures>(
       map_feature_service_name_,
       std::bind(
         &GridmapFeatureExtractorNode::handle_get_map_features,
@@ -63,8 +63,8 @@ private:
   }
 
   void handle_get_cell_features(
-    const std::shared_ptr<soinn_slip_learner::srv::GetCellFeatures::Request> request,
-    std::shared_ptr<soinn_slip_learner::srv::GetCellFeatures::Response> response)
+    const std::shared_ptr<soislip_interfaces::srv::GetCellFeatures::Request> request,
+    std::shared_ptr<soislip_interfaces::srv::GetCellFeatures::Response> response)
   {
     grid_map::GridMap map;
     {
@@ -94,8 +94,8 @@ private:
   }
 
   void handle_get_map_features(
-    const std::shared_ptr<soinn_slip_learner::srv::GetMapFeatures::Request> request,
-    std::shared_ptr<soinn_slip_learner::srv::GetMapFeatures::Response> response)
+    const std::shared_ptr<soislip_interfaces::srv::GetMapFeatures::Request> request,
+    std::shared_ptr<soislip_interfaces::srv::GetMapFeatures::Response> response)
   {
     (void)request;
     grid_map::GridMap map;
@@ -230,8 +230,8 @@ private:
   std::mutex map_mutex_;
 
   rclcpp::Subscription<grid_map_msgs::msg::GridMap>::SharedPtr sub_;
-  rclcpp::Service<soinn_slip_learner::srv::GetCellFeatures>::SharedPtr service_;
-  rclcpp::Service<soinn_slip_learner::srv::GetMapFeatures>::SharedPtr map_service_;
+  rclcpp::Service<soislip_interfaces::srv::GetCellFeatures>::SharedPtr service_;
+  rclcpp::Service<soislip_interfaces::srv::GetMapFeatures>::SharedPtr map_service_;
 };
 
 int main(int argc, char ** argv) {

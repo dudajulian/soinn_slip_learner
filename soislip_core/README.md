@@ -1,16 +1,16 @@
-# soinn_slip_learner
+# soislip_core
 
 SOINN-based slip learning package for ROS 2, with C++ orchestration/feature nodes and Python model nodes.
 
 ## Installation
 System Dependencies:
 ```bash
-sudo apt install python3-networkx 
+sudo apt update & sudo apt install python3-networkx 
 ```
 
 From your workspace directory import dependency repositories:
 ```bash
-vcs import src < soinn_slip_learner/.repos
+vcs import src < src/soinn_slip_learner/.repos
 ```
 
 The kindr package needs to be build with make instead of colon. To avoid building it with
@@ -36,7 +36,7 @@ Then build your workspace with:
 colcon build \
     --merge-install \
     --parallel-workers 2 \
-    --packages-up-to soinn_slip_learner\
+        --packages-up-to soislip_core\
     --cmake-args "-DCMAKE_BUILD_TYPE=Release" "-DCMAKE_EXPORT_COMPILE_COMMANDS=On"
 ```
 
@@ -114,25 +114,17 @@ colcon build \
 
 ## Launch files
 
-In `launch/`:
+Launch files are located in the demo package.
 
-- `training.launch.py` – training-oriented stack
-- `prediction.launch.py` – prediction-oriented stack
-- `full_system.launch.py` – all package nodes
-- `all.launch.py` – includes:
-        - `coppelia_ros2_control`
-        - `elevation_mapping`
-        - `full_system.launch.py`
-
-Run:
+Run Husky demo stack:
 
 ```bash
-ros2 launch soinn_slip_learner all.launch.py
+ros2 launch soislip_demo demo_husky.launch.py
 ```
 
 ## Parameters
 
-Main parameters are in `config/soinn_params.yaml`:
+Main parameters are in `config/soislip_params.yaml`:
 
 - `gridmap_feature_extractor_node`
         - `elevation_map_topic`

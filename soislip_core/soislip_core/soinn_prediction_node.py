@@ -11,7 +11,7 @@ from rclpy.node import Node
 from std_msgs.msg import Bool, Float32MultiArray, String
 
 from soinn_py import SoinnPlus
-from soinn_slip_learner.srv import PredictBatch
+from soislip_interfaces.srv import PredictBatch
 
 
 class SoinnPredictionNode(Node):

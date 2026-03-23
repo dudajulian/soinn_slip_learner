@@ -12,8 +12,8 @@
 #include "grid_map_ros/grid_map_ros.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-#include "soinn_slip_learner/srv/get_map_features.hpp"
-#include "soinn_slip_learner/srv/predict_batch.hpp"
+#include "soislip_interfaces/srv/get_map_features.hpp"
+#include "soislip_interfaces/srv/predict_batch.hpp"
 
 class SlipPredictionManagerNode : public rclcpp::Node {
 public:
@@ -43,9 +43,9 @@ public:
       rclcpp::SensorDataQoS(),
       std::bind(&SlipPredictionManagerNode::handle_map_update, this, std::placeholders::_1));
 
-    map_feature_client_ = this->create_client<soinn_slip_learner::srv::GetMapFeatures>(
+    map_feature_client_ = this->create_client<soislip_interfaces::srv::GetMapFeatures>(
       map_feature_service_name_);
-    predict_batch_client_ = this->create_client<soinn_slip_learner::srv::PredictBatch>(
+    predict_batch_client_ = this->create_client<soislip_interfaces::srv::PredictBatch>(
       predict_batch_service_name_);
 
     timer_ = this->create_wall_timer(
@@ -83,14 +83,14 @@ private:
     }
 
     request_in_flight_ = true;
-    auto map_request = std::make_shared<soinn_slip_learner::srv::GetMapFeatures::Request>();
+    auto map_request = std::make_shared<soislip_interfaces::srv::GetMapFeatures::Request>();
     map_feature_client_->async_send_request(
       map_request,
       std::bind(&SlipPredictionManagerNode::handle_map_features_response, this, std::placeholders::_1));
   }
 
   void handle_map_features_response(
-    rclcpp::Client<soinn_slip_learner::srv::GetMapFeatures>::SharedFuture future)
+    rclcpp::Client<soislip_interfaces::srv::GetMapFeatures>::SharedFuture future)
   {
     try {
       auto map_response = future.get();
@@ -117,14 +117,14 @@ private:
         return;
       }
 
-      auto predict_request = std::make_shared<soinn_slip_learner::srv::PredictBatch::Request>();
+      auto predict_request = std::make_shared<soislip_interfaces::srv::PredictBatch::Request>();
       predict_request->feature_dim = map_response->feature_dim;
       predict_request->features.data = map_response->features.data;
 
       auto positions = std::make_shared<std::vector<geometry_msgs::msg::Point>>(map_response->positions);
       predict_batch_client_->async_send_request(
         predict_request,
-        [this, positions](rclcpp::Client<soinn_slip_learner::srv::PredictBatch>::SharedFuture predict_future) {
+        [this, positions](rclcpp::Client<soislip_interfaces::srv::PredictBatch>::SharedFuture predict_future) {
           this->handle_predict_batch_response(std::move(positions), predict_future);
         });
     } catch (const std::exception & ex) {
@@ -135,7 +135,7 @@ private:
 
   void handle_predict_batch_response(
     const std::shared_ptr<std::vector<geometry_msgs::msg::Point>> & positions,
-    rclcpp::Client<soinn_slip_learner::srv::PredictBatch>::SharedFuture future)
+    rclcpp::Client<soislip_interfaces::srv::PredictBatch>::SharedFuture future)
   {
     try {
       auto response = future.get();
@@ -239,8 +239,8 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<grid_map_msgs::msg::GridMap>::SharedPtr map_sub_;
   rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr slip_map_pub_;
-  rclcpp::Client<soinn_slip_learner::srv::GetMapFeatures>::SharedPtr map_feature_client_;
-  rclcpp::Client<soinn_slip_learner::srv::PredictBatch>::SharedPtr predict_batch_client_;
+  rclcpp::Client<soislip_interfaces::srv::GetMapFeatures>::SharedPtr map_feature_client_;
+  rclcpp::Client<soislip_interfaces::srv::PredictBatch>::SharedPtr predict_batch_client_;
 };
 
 int main(int argc, char ** argv) {
