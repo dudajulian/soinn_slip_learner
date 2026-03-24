@@ -7,13 +7,13 @@ gridmap_feature_extractor_node:
 
 # latent_feature_extractor_node:
 #   ros__parameters:
-#     model_path: "$(var demo_share)/models/latent_feature_model.onnx"
+#     model_path: "$(find-pkg-share soislip_demo)/models/latent_feature_model.onnx"
 #     input_topic: "/gridmap"
 #     latent_dim: 32
 
 soinn_training_node:
   ros__parameters:
-    model_path: "$(var demo_share)/models/soinn_model.pkl"
+    model_path: "$(find-pkg-share soislip_demo)/models/soinn_model.pkl"
     init_new_model: false
     sample_topic: "/experience_samples"
     input_dimension: 0
@@ -22,7 +22,7 @@ soinn_training_node:
 
 soinn_prediction_node:
   ros__parameters:
-    model_path: "$(var demo_share)/models/soinn_model.pkl"
+    model_path: "$(find-pkg-share soislip_demo)/models/soinn_model.pkl"
     service_name: "predict_batch"
     feature_dim: 0
     model_reload_period_sec: 20.0

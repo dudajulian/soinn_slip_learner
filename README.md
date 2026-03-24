@@ -27,18 +27,35 @@ cd ../../../
 ```
 It is a good idea to add the CMAKE_PREFIX_PATH to your ~/.bashrc
 ```bash
-echo "export CMAKE_PREFIX_PATH=/usr/local:#CMAKE_PREFIX_PATH" >> ~/.bashrc
+echo "export CMAKE_PREFIX_PATH=/usr/local:$CMAKE_PREFIX_PATH" >> ~/.bashrc
 source ~/.bashrc
 ```
 
-Then build your workspace with:
+Then build and source the packages from your workspace directory with:
 ```bash
 colcon build \
     --merge-install \
     --parallel-workers 2 \
-        --packages-up-to soislip_core\
+        --packages-up-to soislip_demo\
     --cmake-args "-DCMAKE_BUILD_TYPE=Release" "-DCMAKE_EXPORT_COMPILE_COMMANDS=On"
+source install/setup.bash
 ```
+
+Launch the core package (see the example parameter file `soislip_demo/config/soislip_params.yaml`):
+```
+ros2 launch soislip_core soislip.launch.py params_file:=path/to/parameter_file
+```
+
+## Demo with Coppelia Sim and Husky Robot
+To see the package in action launch the demo tmux session `soislip_demo/scripts/startup.sh`. For this to work you need to install and setup CoppeliaSim. Follow the instructions of [`coppelia_ros2_control`](https://github.com/dudajulian/coppelia_ros2_control) package which was developed along side with this project.
+> NOTE: Per default the `startup.sh` launches a `teleop_twist_joy` node for controlling the robot with an XBOX 360 controller. If you prefer to use `teleop_twist_keyboard` instead simply uncomment it in the `startup_order` inside `startup.sh`.
+
+Also make to set `COPPELIASIM_ROOT_DIR` correctly. (This should be the case if the `sim_ros2_interface` was installed correctly.)
+```bash
+export COPPELIASIM_ROOT_DIR=~/path/to/coppeliaSim/folder
+```
+
+
 
 ## Current architecture (implemented)
 

@@ -16,14 +16,13 @@ set -u
 # mkdir -p "$LOG_DIR"
 
 DEMO_SHARE="$(ros2 pkg prefix soislip_demo)/share/soislip_demo"
-COPPELIASIM_ROOT="${COPPELIASIM_ROOT:-$WORKSPACE_ROOT/CoppeliaSim_Edu_V4_10_0_rev0_Ubuntu22_04}"
 
 ROBOT_RESOURCE_DIR="$DEMO_SHARE/resources/husky"
 ELEVATION_CONFIG_DIR="$DEMO_SHARE/config/elevation_mapping"
 RVIZ_CONFIG_FILE="$DEMO_SHARE/config/rviz/custom_rviz2.rviz"
 
 declare -A cmds=(
-  [coppelia_sim]="'$COPPELIASIM_ROOT'/coppeliaSim \
+  [coppelia_sim]="'$COPPELIASIM_ROOT_DIR'/coppeliaSim \
     '$ROBOT_RESOURCE_DIR'/scene.ttt -s 0 "
 #     > '$LOG_DIR/coppelia_sim.log' 2>&1"
   [coppelia_controller]="ros2 launch coppelia_ros2_control coppelia_control.launch.py \
@@ -52,7 +51,7 @@ declare -A cmds=(
 )
 
 # Keep startup order aligned with all.launch.py.
-ordered_windows=(
+startup_order=(
   coppelia_sim
   coppelia_controller
   elevation_mapping
@@ -68,7 +67,7 @@ fi
 
 source_cmd="source ~/.bashrc; source '$WORKSPACE_ROOT/install/setup.bash'; cd '$WORKSPACE_ROOT'"
 
-for name in "${ordered_windows[@]}"; do
+for name in "${startup_order[@]}"; do
   echo "Starting $name ..."
   if ! tmux has-session -t "$SESSION" 2>/dev/null; then
     tmux new-session -d -s "$SESSION" -n "$name"
