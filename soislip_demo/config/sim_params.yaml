@@ -1,0 +1,49 @@
+gridmap_feature_extractor_node:
+  ros__parameters:
+    elevation_map_topic: "/elevation_map"
+    feature_service_name: "get_cell_features"
+    map_feature_service_name: "get_map_features"
+    feature_radius: 0.8
+
+# latent_feature_extractor_node:
+#   ros__parameters:
+#     model_path: "$(find-pkg-share soislip_demo)/models/latent_feature_model.onnx"
+#     input_topic: "/gridmap"
+#     latent_dim: 32
+
+soinn_training_node:
+  ros__parameters:
+    model_path: "$(find-pkg-share soislip_demo)/models/soinn_model.pkl"
+    init_new_model: false
+    sample_topic: "/experience_samples"
+    input_dimension: 0
+    max_edge_age: 50
+    auto_save_period_sec: 120.0
+
+soinn_prediction_node:
+  ros__parameters:
+    model_path: "$(find-pkg-share soislip_demo)/models/soinn_model.pkl"
+    service_name: "predict_batch"
+    feature_dim: 0
+    model_reload_period_sec: 20.0
+
+robot_experience_collector_node:
+  ros__parameters:
+    wheel_separation: 0.512
+    robot_frame: "base_link"
+    odom_frame: "odom"
+    reference_frame: "map"
+    movement_threshold: 0.05
+    collector_period_sec: 0.5
+    sample_topic: "/experience_samples"
+    feature_service_name: "get_cell_features"
+
+slip_prediction_manager:
+  ros__parameters:
+    prediction_points_topic: "/slip_prediction_points"
+    slip_prediction_map_topic: "/slip_prediction_map"
+    elevation_map_topic: "/elevation_map"
+    slip_layer_name: "slip_prediction"
+    map_feature_service_name: "get_map_features"
+    predict_batch_service_name: "predict_batch"
+    prediction_period_sec: 5.0

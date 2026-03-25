@@ -1,9 +1,10 @@
 elevation_mapping:
   ros__parameters:
-    inputs: ["zed2"] # A name to identify the input source
-    zed2:
+    inputs: ["sim_camera"] # A name to identify the input source
+
+    sim_camera:
       type: pointcloud # Supported types: pointcloud
-      topic: /zed/zed_node/point_cloud/cloud_registered
+      topic: coppeliasim/point_cloud/cloud_registered
       queue_size: 1
       publish_on_update: true # Whether to publish the elevation map after a callback from this source.
       sensor_processor:
@@ -11,10 +12,10 @@ elevation_mapping:
         ignore_points_above: 1.0
         ignore_points_below: -1.0
     map_frame_id: "map"
-    robot_base_frame_id: "zed_camera_center" # When testing only the ZED camera use "zed_camera_link" instead.
+    robot_base_frame_id: "base_link" 
     robot_pose_with_covariance_topic: "" # Leaving this empty skipps pose covariance updates.
     robot_pose_cache_size: 200
-    track_point_frame_id: "zed_camera_center"
+    track_point_frame_id: "base_link"
     track_point_x: 0.0
     track_point_y: 0.0
     track_point_z: 0.0
