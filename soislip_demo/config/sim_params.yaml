@@ -31,7 +31,7 @@ robot_experience_collector_node:
   ros__parameters:
     wheel_separation: 0.512
     robot_frame: "base_link"
-    odom_frame: "odom"
+    wheelodom_frame: "odom"
     reference_frame: "map"
     movement_threshold: 0.05
     collector_period_sec: 0.5

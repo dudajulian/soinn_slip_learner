@@ -21,7 +21,7 @@ public:
   : Node("robot_experience_collector_node") {
     this->declare_parameter("wheel_separation", 0.3);
     this->declare_parameter("robot_frame", "base_link");
-    this->declare_parameter("odom_frame", "odom");
+    this->declare_parameter("wheelodom_frame", "odom");
     this->declare_parameter("reference_frame", "map");
     this->declare_parameter("movement_threshold", 0.05);
     this->declare_parameter("sample_topic", "/experience_samples");
@@ -30,7 +30,7 @@ public:
 
     this->get_parameter("wheel_separation", wheel_separation_);
     this->get_parameter("robot_frame", robot_frame_);
-    this->get_parameter("odom_frame", odom_frame_);
+    this->get_parameter("wheelodom_frame", wheelodom_frame_);
     this->get_parameter("reference_frame", reference_frame_);
     this->get_parameter("movement_threshold", movement_threshold_);
     this->get_parameter("sample_topic", sample_topic_);
@@ -55,7 +55,7 @@ private:
     tf2::Transform current_wheelodom;
     tf2::Transform current_ref;
 
-    if (!get_robot_transforms(current_wheelodom, current_ref, robot_frame_, odom_frame_, reference_frame_)) {
+    if (!get_robot_transforms(current_wheelodom, current_ref, robot_frame_, wheelodom_frame_, reference_frame_)) {
       skip_iteration_ = true;
       return;
     }
@@ -127,15 +127,15 @@ private:
   }
 
   bool get_robot_transforms(
-    tf2::Transform & transform_odom,
+    tf2::Transform & transform_wheelodom,
     tf2::Transform & transform_ref,
     const std::string & robot_frame,
-    const std::string & odom_frame,
+    const std::string & wheelodom_frame,
     const std::string & ref_frame,
     const tf2::TimePoint & t = tf2::TimePointZero)
   {
     try {
-      tf2::fromMsg(tf_buffer_->lookupTransform(robot_frame, odom_frame, t).transform, transform_odom);
+      tf2::fromMsg(tf_buffer_->lookupTransform(robot_frame, wheelodom_frame, t).transform, transform_wheelodom);
       tf2::fromMsg(tf_buffer_->lookupTransform(robot_frame, ref_frame, t).transform, transform_ref);
     } catch (const tf2::TransformException & ex) {
       RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Could not get transforms: %s", ex.what());
@@ -207,7 +207,7 @@ private:
   double movement_threshold_{0.05};
   double collector_period_sec_{0.1};
   std::string robot_frame_;
-  std::string odom_frame_;
+  std::string wheelodom_frame_;
   std::string reference_frame_;
   std::string sample_topic_;
   std::string feature_service_name_;
