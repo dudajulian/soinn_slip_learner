@@ -22,7 +22,7 @@ ELEVATION_CONFIG_DIR="$DEMO_SHARE/config/elevation_mapping"
 RVIZ_CONFIG_FILE="$DEMO_SHARE/config/rviz/custom_rviz2.rviz"
 
 declare -A cmds=(
-  [zenoh_bridge]="zenoh-bridge-ros2dds"
+  [zenoh_bridge]="zenoh-bridge-ros2dds -e tcp/192.168.131.1:7447"
   [static_tf_zed]="ros2 run tf2_ros static_transform_publisher \
     0.05 0.0 0.3 0 0.174533 0 base_link zed_camera_link \
     --ros-args \
@@ -50,12 +50,12 @@ declare -A cmds=(
 
 # Keep startup order aligned with all.launch.py.
 startup_order=(
-  # zenoh_bridge
+  zenoh_bridge
   static_tf_zed
   # elevation_mapping
   # soislip_demo
   # rviz
-#   teleop_key
+  # teleop_key
   teleop_joy
 )
 
