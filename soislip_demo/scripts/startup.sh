@@ -22,6 +22,12 @@ ELEVATION_CONFIG_DIR="$DEMO_SHARE/config/elevation_mapping"
 RVIZ_CONFIG_FILE="$DEMO_SHARE/config/rviz/custom_rviz2.rviz"
 
 declare -A cmds=(
+  [zenoh_bridge]="zenoh-bridge-ros2dds"
+  [static_tf_zed]="ros2 run tf2_ros static_transform_publisher \
+    0.05 0.0 0.3 0 0.174533 0 base_link zed_camera_link \
+    --ros-args \
+    --remap /tf:=/tug_husky/tf \
+    --remap /tf_static:=/tug_husky/tf_static"
   [elevation_mapping]="ros2 run elevation_mapping elevation_mapping \
     --ros-args \
     --params-file '$ELEVATION_CONFIG_DIR/zed2_robot.yaml' \
@@ -35,20 +41,22 @@ declare -A cmds=(
   [rviz]="ros2 run rviz2 rviz2 \
     --display-config '$RVIZ_CONFIG_FILE'"
   [teleop_key]="ros2 run teleop_twist_keyboard teleop_twist_keyboard \
-    --ros-args -p stamped:=true \
-    --remap cmd_vel:=/platform_velocity_controller/cmd_vel" 
+    --ros-args -p stamped:=false \
+    --remap cmd_vel:=/tug_husky/cmd_vel" 
   [teleop_joy]="ros2 launch teleop_twist_joy teleop-launch.py \
-    joy_config:='xbox' publish_stamped_twist:=true  \
-    joy_vel:=/platform_velocity_controller/cmd_vel" 
+    joy_config:='xbox' publish_stamped_twist:=false  \
+    joy_vel:=/tug_husky/cmd_vel" 
 )
 
 # Keep startup order aligned with all.launch.py.
 startup_order=(
-  elevation_mapping
+  # zenoh_bridge
+  static_tf_zed
+  # elevation_mapping
   # soislip_demo
-  rviz
+  # rviz
 #   teleop_key
-  # teleop_joy
+  teleop_joy
 )
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
@@ -57,14 +65,10 @@ fi
 
 source_cmd="source ~/.bashrc; source '$WORKSPACE_ROOT/install/setup.bash'; cd '$WORKSPACE_ROOT'"
 
+tmux new-session -d -s "$SESSION" -n "control"
 for name in "${startup_order[@]}"; do
   echo "Starting $name ..."
-  if ! tmux has-session -t "$SESSION" 2>/dev/null; then
-    tmux new-session -d -s "$SESSION" -n "$name"
-  else
-    tmux new-window -t "$SESSION" -n "$name"
-  fi
-
+  tmux new-window -t "$SESSION" -n "$name"
   tmux send-keys -t "$SESSION:$name" \
     "bash -lc 'set +u; $source_cmd; set -u; ${cmds[$name]}'" C-m
   sleep 2

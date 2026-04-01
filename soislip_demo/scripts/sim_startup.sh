@@ -67,14 +67,10 @@ fi
 
 source_cmd="source ~/.bashrc; source '$WORKSPACE_ROOT/install/setup.bash'; cd '$WORKSPACE_ROOT'"
 
+tmux new-session -d -s "$SESSION" -n "control"
 for name in "${startup_order[@]}"; do
   echo "Starting $name ..."
-  if ! tmux has-session -t "$SESSION" 2>/dev/null; then
-    tmux new-session -d -s "$SESSION" -n "$name"
-  else
-    tmux new-window -t "$SESSION" -n "$name"
-  fi
-
+  tmux new-window -t "$SESSION" -n "$name"
   tmux send-keys -t "$SESSION:$name" \
     "bash -lc 'set +u; $source_cmd; set -u; ${cmds[$name]}'" C-m
   sleep 2

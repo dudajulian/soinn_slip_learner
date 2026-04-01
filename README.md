@@ -60,7 +60,11 @@ Also make to set `COPPELIASIM_ROOT_DIR` correctly. (This should be the case if t
 export COPPELIASIM_ROOT_DIR=~/path/to/coppeliaSim/folder
 ```
 
-
+## Demo with Real Robot
+**Prerequisites:**
+- Robot publishing wheel odometry
+- Vision sensors on robot publishing pointcloud
+- Reference odometry (e.g. visual odometry)
 
 ## Current architecture (implemented)
 
