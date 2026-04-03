@@ -3,7 +3,5 @@
 
 ## Customization
 
-### `resources/husky/zenoh_config.json5`
-This config works for all devices
-- mode: "peer" (Assuming Jetson, Husky and BaseStation are in the same Subnet)
-- transient_local_cache_multiplier: 100 (To avoid loosing static transform)
+### `resources/zed_camera_tf_remap.launch`
+By default the zed_node publishes to /tf and /tf_static no matter the namespace so I added two parameters to the launch file so one can remap these (usefull for all clearpath robots)

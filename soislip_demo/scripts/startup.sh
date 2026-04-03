@@ -22,8 +22,12 @@ ELEVATION_CONFIG_DIR="$DEMO_SHARE/config/elevation_mapping"
 RVIZ_CONFIG_FILE="$DEMO_SHARE/config/rviz/custom_rviz2.rviz"
 
 declare -A cmds=(
-  # [zenoh_bridge]="zenoh-bridge-ros2dds -c $DEMO_PKG_DIR/resources/husky/zenoh_config.json5"
-  [zed_docker]="bash $DEMO_PKG_DIR/scripts/run_zed_docker.sh"
+  [zed_node]="ros2 launch zed_wrapper zed_camera_tf_remap.launch.py \
+    camera_model:=zed2 \
+    publish_tf:=false \
+    tf_topic:=/tug_husky/tf \
+    tf_static_topic:=/tug_husky/tf_static \
+    namespace:=jetson"
   [static_tf_zed]="ros2 run tf2_ros static_transform_publisher \
     0.05 0.0 0.3 0 0.174533 0 base_link zed_camera_link \
     --ros-args \
@@ -52,7 +56,7 @@ declare -A cmds=(
 # Keep startup order aligned with all.launch.py.
 startup_order=(
   static_tf_zed
-  zed_docker
+  zed_node
   # elevation_mapping
   # soislip_demo
   # rviz
