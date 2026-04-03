@@ -22,7 +22,7 @@ ELEVATION_CONFIG_DIR="$DEMO_SHARE/config/elevation_mapping"
 RVIZ_CONFIG_FILE="$DEMO_SHARE/config/rviz/custom_rviz2.rviz"
 
 declare -A cmds=(
-  [zenoh_bridge]="zenoh-bridge-ros2dds -c $DEMO_PKG_DIR/resources/husky/zenoh_config.json5"
+  # [zenoh_bridge]="zenoh-bridge-ros2dds -c $DEMO_PKG_DIR/resources/husky/zenoh_config.json5"
   [zed_docker]="bash $DEMO_PKG_DIR/scripts/run_zed_docker.sh"
   [static_tf_zed]="ros2 run tf2_ros static_transform_publisher \
     0.05 0.0 0.3 0 0.174533 0 base_link zed_camera_link \
@@ -51,7 +51,6 @@ declare -A cmds=(
 
 # Keep startup order aligned with all.launch.py.
 startup_order=(
-  zenoh_bridge
   static_tf_zed
   zed_docker
   # elevation_mapping
