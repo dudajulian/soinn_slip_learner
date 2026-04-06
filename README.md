@@ -68,7 +68,7 @@ export COPPELIASIM_ROOT_DIR=~/path/to/coppeliaSim/folder
 - Follow the network recommendations of [Stereolabs ZED](https://www.stereolabs.com/docs/ros2/dds-and-network-tuning). Also see the the `RMW_CYCLONEDDS_CONFIG.xml` here.
 
 change into your workspace folder
-``bash
+```bash
 export ROS_DOMAIN_ID=30
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI=$(pwd)/src/soinn_slip_learner/soislip_demo/resources/husky/RMW_CYCLONEDDS_CONFIG.xml
