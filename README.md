@@ -40,9 +40,9 @@ Then build and source the packages from your workspace directory with:
 ```bash
 colcon build \
     --merge-install \
-    --parallel-workers 2 \
+    --parallel-workers $(nproc) \
         --packages-up-to soislip_demo\
-    --cmake-args "-DCMAKE_BUILD_TYPE=Release" "-DCMAKE_EXPORT_COMPILE_COMMANDS=On"
+    --cmake-args "-DCMAKE_BUILD_TYPE=Release"
 source install/setup.bash
 ```
 
