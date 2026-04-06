@@ -44,7 +44,8 @@ declare -A cmds=(
     params_file:='$DEMO_SHARE/config/params.yaml'"
 #     > '$LOG_DIR/soislip_demo.log' 2>&1"
   [rviz]="ros2 run rviz2 rviz2 \
-    --display-config '$RVIZ_CONFIG_FILE'"
+    --display-config '$RVIZ_CONFIG_FILE' \
+    --ros-args -r /tf:=/tug_husky/tf -r /tf_static:=/tug_husky/tf_static"
   [teleop_key]="ros2 run teleop_twist_keyboard teleop_twist_keyboard \
     --ros-args -p stamped:=false \
     --remap cmd_vel:=/tug_husky/cmd_vel" 
@@ -57,11 +58,11 @@ declare -A cmds=(
 startup_order=(
   static_tf_zed
   zed_node
-  # elevation_mapping
-  # soislip_demo
+  elevation_mapping
+  soislip_demo
   # rviz
   # teleop_key
-  # teleop_joy
+  teleop_joy
 )
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
