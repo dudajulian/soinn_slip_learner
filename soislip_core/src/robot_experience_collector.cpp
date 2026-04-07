@@ -1,6 +1,7 @@
 #include <memory>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -23,19 +24,21 @@ public:
     this->declare_parameter("robot_frame", "base_link");
     this->declare_parameter("wheelodom_frame", "odom");
     this->declare_parameter("reference_frame", "map");
-    this->declare_parameter("movement_threshold", 0.05);
+    this->declare_parameter("collector_movement_threshold", 0.3);
+    this->declare_parameter("zero_movement_threshold", 0.05);
     this->declare_parameter("sample_topic", "/experience_samples");
     this->declare_parameter("feature_service_name", "get_cell_features");
-    this->declare_parameter("collector_period_sec", 0.1);
+    this->declare_parameter("tf_poll_period_sec", 0.05); // 20 Hz like the /tf topic
 
     this->get_parameter("wheel_separation", wheel_separation_);
     this->get_parameter("robot_frame", robot_frame_);
     this->get_parameter("wheelodom_frame", wheelodom_frame_);
     this->get_parameter("reference_frame", reference_frame_);
-    this->get_parameter("movement_threshold", movement_threshold_);
+    this->get_parameter("collector_movement_threshold", collector_movement_threshold_);
+    this->get_parameter("zero_movement_threshold", zero_movement_threshold_);
     this->get_parameter("sample_topic", sample_topic_);
     this->get_parameter("feature_service_name", feature_service_name_);
-    this->get_parameter("collector_period_sec", collector_period_sec_);
+    this->get_parameter("tf_poll_period_sec", tf_poll_period_sec_);
 
     sample_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>(sample_topic_, 10);
     feature_client_ = this->create_client<soislip_interfaces::srv::GetCellFeatures>(feature_service_name_);
@@ -44,7 +47,7 @@ public:
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
     timer_ = this->create_wall_timer(
-      std::chrono::duration<double>(collector_period_sec_),
+      std::chrono::duration<double>(tf_poll_period_sec_),
       std::bind(&RobotExperienceCollectorNode::timer_callback, this));
 
     RCLCPP_INFO(this->get_logger(), "robot_experience_collector_node started");
@@ -75,36 +78,38 @@ private:
     }
 
     float slip = 0.0F;
-    if (calculate_slip(transform_last_wheelodom_, transform_last_ref_, current_wheelodom, current_ref, slip)) {
-      if (!feature_client_->service_is_ready()) {
-        RCLCPP_WARN_THROTTLE(
-          this->get_logger(), *this->get_clock(), 2000, "Feature service '%s' not available",
-          feature_service_name_.c_str());
-      } else {
-        geometry_msgs::msg::Point midpoint = calculate_midpoint_position(transform_last_ref_, current_ref);
-        auto request = std::make_shared<soislip_interfaces::srv::GetCellFeatures::Request>();
-        request->position = midpoint;
+    if (!calculate_slip(transform_last_wheelodom_, transform_last_ref_, current_wheelodom, current_ref, slip)) {
+      return;
+    }
 
-        feature_client_->async_send_request(
-          request,
-          [this, slip](rclcpp::Client<soislip_interfaces::srv::GetCellFeatures>::SharedFuture future) {
-            try {
-              auto response = future.get();
-              if (!response->success.data) {
-                RCLCPP_WARN(this->get_logger(), "Feature request failed: %s", response->message.data.c_str());
-                return;
-              }
+    if (!feature_client_->service_is_ready()) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000, "Feature service '%s' not available",
+        feature_service_name_.c_str());
+    } else {
+      geometry_msgs::msg::Point midpoint = calculate_midpoint_position(transform_last_ref_, current_ref);
+      auto request = std::make_shared<soislip_interfaces::srv::GetCellFeatures::Request>();
+      request->position = midpoint;
 
-              std_msgs::msg::Float32MultiArray sample;
-              sample.data.reserve(response->features.data.size() + 1);
-              sample.data.push_back(slip);
-              sample.data.insert(sample.data.end(), response->features.data.begin(), response->features.data.end());
-              sample_pub_->publish(sample);
-            } catch (const std::exception & ex) {
-              RCLCPP_WARN(this->get_logger(), "Feature service response failed: %s", ex.what());
+      feature_client_->async_send_request(
+        request,
+        [this, slip](rclcpp::Client<soislip_interfaces::srv::GetCellFeatures>::SharedFuture future) {
+          try {
+            auto response = future.get();
+            if (!response->success.data) {
+              RCLCPP_WARN(this->get_logger(), "Feature request failed: %s", response->message.data.c_str());
+              return;
             }
-          });
-      }
+
+            std_msgs::msg::Float32MultiArray sample;
+            sample.data.reserve(response->features.data.size() + 1);
+            sample.data.push_back(slip);
+            sample.data.insert(sample.data.end(), response->features.data.begin(), response->features.data.end());
+            sample_pub_->publish(sample);
+          } catch (const std::exception & ex) {
+            RCLCPP_WARN(this->get_logger(), "Feature service response failed: %s", ex.what());
+          }
+        });
     }
 
     transform_last_wheelodom_ = current_wheelodom;
@@ -161,25 +166,36 @@ private:
     compute_traveled_wheeldistances(displacement_wheelodom, dsl_wheelodom, dsr_wheelodom);
     compute_traveled_wheeldistances(displacement_ref, dsl_ref, dsr_ref);
 
-    if (std::fabs(dsl_wheelodom) < movement_threshold_ &&
-      std::fabs(dsr_wheelodom) < movement_threshold_ &&
-      std::fabs(dsl_ref) < movement_threshold_ &&
-      std::fabs(dsr_ref) < movement_threshold_)
+    if (std::fabs(dsl_wheelodom) < collector_movement_threshold_ &&
+      std::fabs(dsr_wheelodom) < collector_movement_threshold_ &&
+      std::fabs(dsl_ref) < collector_movement_threshold_ &&
+      std::fabs(dsr_ref) < collector_movement_threshold_)
     {
       return false;
     }
 
-    const double right_scale = std::max(std::fabs(dsr_wheelodom), std::fabs(dsr_ref));
-    const double left_scale = std::max(std::fabs(dsl_wheelodom), std::fabs(dsl_ref));
-    if (right_scale <= 0.0 || left_scale <= 0.0) {
-      return false;
+    const double right_slip = compute_normalized_slip_component(dsr_wheelodom, dsr_ref);
+    const double left_slip = compute_normalized_slip_component(dsl_wheelodom, dsl_ref);
+
+    // Average
+    // slip = static_cast<float>((right_slip + left_slip) / 2.0);
+
+    // Norm 2
+    slip = std::sqrt(right_slip * right_slip + left_slip * left_slip) / std::sqrt(2.0);
+
+    // Max
+    // slip = static_cast<float>(std::max(right_slip, left_slip));
+    return true;
+  }
+
+  double compute_normalized_slip_component(double wheelodom_distance, double ref_distance) const {
+    const double scale = std::max(std::fabs(wheelodom_distance), std::fabs(ref_distance));
+    // if (scale <= std::numeric_limits<double>::epsilon()) {
+    if (scale <= zero_movement_threshold_) {
+      return 0.0;
     }
 
-    const double right_slip = std::fabs(dsr_wheelodom - dsr_ref) / right_scale;
-    const double left_slip = std::fabs(dsl_wheelodom - dsl_ref) / left_scale;
-
-    slip = static_cast<float>((right_slip + left_slip) / 2.0);
-    return true;
+    return std::fabs(wheelodom_distance - ref_distance) / scale;
   }
 
   void compute_traveled_wheeldistances(
@@ -203,9 +219,10 @@ private:
 
   bool initialized_{false};
   bool skip_iteration_{false};
-  double wheel_separation_{1.0};
-  double movement_threshold_{0.05};
-  double collector_period_sec_{0.1};
+  double wheel_separation_;
+  double collector_movement_threshold_;
+  double zero_movement_threshold_;
+  double tf_poll_period_sec_;
   std::string robot_frame_;
   std::string wheelodom_frame_;
   std::string reference_frame_;
