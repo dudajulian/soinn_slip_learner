@@ -3,10 +3,6 @@ repositories:
     type: git
     url: git@github.com:Muhammad540/elevation_mapping.git
     version: 710fffcba00dc4df3c3f4793194e19c38bb88307
-  grid_map:
-    type: git
-    url: git@github.com:ANYbotics/grid_map.git
-    version: d9dbb58fb3e070de000775cefcfd8951515abee8
   kindr:
     type: git
     url: git@github.com:ANYbotics/kindr.git

@@ -29,19 +29,21 @@ declare -A cmds=(
     tf_static_topic:=/tug_husky/tf_static \
     namespace:=jetson"
   [static_tf_zed]="ros2 run tf2_ros static_transform_publisher \
-    0.05 0.0 0.3 0 0.174533 0 base_link zed_camera_link \
+    0.0 0.0 0.71 0 0.05 0 base_link zed_camera_link \
     --ros-args \
-    --remap /tf:=/tug_husky/tf \
-    --remap /tf_static:=/tug_husky/tf_static"
+    -r /tf:=/tug_husky/tf -r /tf_static:=/tug_husky/tf_static"
   [elevation_mapping]="ros2 run elevation_mapping elevation_mapping \
     --ros-args \
     --params-file '$ELEVATION_CONFIG_DIR/zed2_robot.yaml' \
     --params-file '$ELEVATION_CONFIG_DIR/elevation_map.yaml' \
     --params-file '$ELEVATION_CONFIG_DIR/aslam.yaml' \
-    --params-file '$ELEVATION_CONFIG_DIR/postprocessor_pipeline.yaml'"
+    --params-file '$ELEVATION_CONFIG_DIR/postprocessor_pipeline.yaml'
+    -r /tf:=/tug_husky/tf -r /tf_static:=/tug_husky/tf_static"
 #     > '$LOG_DIR/elevation_mapping.log' 2>&1"
   [soislip_demo]="ros2 launch soislip_core soislip.launch.py \
-    params_file:='$DEMO_SHARE/config/params.yaml'"
+    params_file:='$DEMO_SHARE/config/params.yaml'
+    tf_topic:=/tug_husky/tf \
+    tf_static_topic:=/tug_husky/tf_static"
 #     > '$LOG_DIR/soislip_demo.log' 2>&1"
   [rviz]="ros2 run rviz2 rviz2 \
     --display-config '$RVIZ_CONFIG_FILE' \
@@ -61,8 +63,8 @@ startup_order=(
   elevation_mapping
   soislip_demo
   # rviz
-  # teleop_key
-  teleop_joy
+  teleop_key
+  # teleop_joy
 )
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then

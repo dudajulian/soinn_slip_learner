@@ -5,7 +5,7 @@ SOINN-based slip learning package for ROS 2, with C++ orchestration/feature node
 ## Installation
 System Dependencies:
 ```bash
-sudo apt update && sudo apt install python3-networkx ros-humble-nav2-costmap-2d
+sudo apt update && sudo apt install python3-networkx ros-humble-nav2-costmap-2d ros-humble-grid-map
 ```
 
 From your workspace directory import dependency repositories:
@@ -39,7 +39,6 @@ rosdep install --from-paths src --ignore-src -y
 Then build and source the packages from your workspace directory with:
 ```bash
 colcon build \
-    --merge-install \
     --parallel-workers $(nproc) \
         --packages-up-to soislip_demo\
     --cmake-args "-DCMAKE_BUILD_TYPE=Release"
