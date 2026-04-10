@@ -3,7 +3,7 @@ elevation_mapping:
     inputs: ["zed2"] # A name to identify the input source
     zed2:
       type: pointcloud # Supported types: pointcloud
-      topic: /zed/point_cloud/cloud_registered
+      topic: /jetson/zed/point_cloud/cloud_registered
       queue_size: 1
       publish_on_update: true # Whether to publish the elevation map after a callback from this source.
       sensor_processor:

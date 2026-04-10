@@ -26,7 +26,8 @@ declare -A cmds=(
     camera_model:=zed2 \
     publish_tf:=false \
     tf_topic:=/tug_husky/tf \
-    tf_static_topic:=/tug_husky/tf_static"
+    tf_static_topic:=/tug_husky/tf_static \
+    namespace:=jetson"
   [static_tf_zed]="ros2 run tf2_ros static_transform_publisher \
     0.0 0.0 0.71 0 0.05 0 base_link zed_camera_link \
     --ros-args -r /tf:=/tug_husky/tf -r /tf_static:=/tug_husky/tf_static"
