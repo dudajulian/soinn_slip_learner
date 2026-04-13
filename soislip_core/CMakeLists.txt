@@ -19,6 +19,7 @@ find_package(soislip_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(grid_map_core REQUIRED)
 find_package(grid_map_ros REQUIRED)
@@ -51,6 +52,7 @@ ament_target_dependencies(robot_experience_collector_node
   soislip_interfaces
   std_msgs
   geometry_msgs
+  nav_msgs
   tf2
   tf2_ros
   tf2_geometry_msgs

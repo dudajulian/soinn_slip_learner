@@ -87,7 +87,7 @@ source $(pwd)/install/local_setup.bash
                 - `get_map_features` (`GetMapFeatures.srv`)
 
 - `robot_experience_collector_node`
-        - Computes slip from TF motion (`odom` vs `map` reference)
+        - Computes slip from either TF frames or `nav_msgs/msg/Odometry` topics
         - Queries `get_cell_features` at the midpoint position
         - Publishes training samples to `/experience_samples` (`std_msgs/msg/Float32MultiArray`)
         - Sample format: `[slip, f0, f1, ...]`
@@ -136,7 +136,7 @@ source $(pwd)/install/local_setup.bash
 ### Training path
 
 1. `gridmap_feature_extractor_node` keeps latest map.
-2. `robot_experience_collector_node` computes slip from TF interval.
+2. `robot_experience_collector_node` computes slip from a frame- or topic-based odometry interval.
 3. Collector queries `get_cell_features` at midpoint position.
 4. Collector publishes `[slip + features]` to `/experience_samples`.
 5. `soinn_training_node.py` trains and persists the model.
@@ -168,7 +168,8 @@ Main parameters are in `config/soislip_params.yaml`:
         - `feature_radius`
 
 - `robot_experience_collector_node`
-        - `wheel_separation`, `robot_frame`, `odom_frame`, `reference_frame`
+        - `wheel_separation`, `robot_frame`, `wheel_odom`, `reference_odom`
+        - `wheel_odom_source`, `reference_odom_source`, `odom_timeout_sec`
         - `movement_threshold`, `collector_period_sec`
         - `sample_topic`, `feature_service_name`
 

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <memory>
 #include <chrono>
 #include <cmath>
@@ -6,6 +7,7 @@
 #include <vector>
 
 #include <geometry_msgs/msg/point.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <tf2/exceptions.h>
@@ -16,35 +18,60 @@
 
 #include "soislip_interfaces/srv/get_cell_features.hpp"
 
+enum class OdomSourceType {
+  Frame,
+  Topic,
+};
+
+struct OdomSourceConfig {
+  std::string name;
+  OdomSourceType configured_type{OdomSourceType::Frame};
+};
+
 class RobotExperienceCollectorNode : public rclcpp::Node {
 public:
   RobotExperienceCollectorNode()
   : Node("robot_experience_collector_node") {
     this->declare_parameter("wheel_separation", 0.3);
     this->declare_parameter("robot_frame", "base_link");
-    this->declare_parameter("wheelodom_frame", "odom");
-    this->declare_parameter("reference_frame", "map");
+    this->declare_parameter("wheel_odom", "odom");
+    this->declare_parameter("reference_odom", "map");
+    this->declare_parameter("wheel_odom_source", "frame");
+    this->declare_parameter("reference_odom_source", "frame");
     this->declare_parameter("collector_movement_threshold", 0.3);
     this->declare_parameter("zero_movement_threshold", 0.05);
+    this->declare_parameter("odom_timeout_sec", 0.5);
     this->declare_parameter("sample_topic", "/experience_samples");
     this->declare_parameter("feature_service_name", "get_cell_features");
     this->declare_parameter("tf_poll_period_sec", 0.05); // 20 Hz like the /tf topic
 
+    std::string wheel_odom_source;
+    std::string reference_odom_source;
     this->get_parameter("wheel_separation", wheel_separation_);
     this->get_parameter("robot_frame", robot_frame_);
-    this->get_parameter("wheelodom_frame", wheelodom_frame_);
-    this->get_parameter("reference_frame", reference_frame_);
+    this->get_parameter("wheel_odom", wheel_odom_);
+    this->get_parameter("reference_odom", reference_odom_);
+    this->get_parameter("wheel_odom_source", wheel_odom_source);
+    this->get_parameter("reference_odom_source", reference_odom_source);
     this->get_parameter("collector_movement_threshold", collector_movement_threshold_);
     this->get_parameter("zero_movement_threshold", zero_movement_threshold_);
+    this->get_parameter("odom_timeout_sec", odom_timeout_sec_);
     this->get_parameter("sample_topic", sample_topic_);
     this->get_parameter("feature_service_name", feature_service_name_);
     this->get_parameter("tf_poll_period_sec", tf_poll_period_sec_);
+
+    wheel_odom_config_.name = wheel_odom_;
+    wheel_odom_config_.configured_type = parse_source_type(wheel_odom_source, "wheel_odom_source");
+    reference_odom_config_.name = reference_odom_;
+    reference_odom_config_.configured_type = parse_source_type(reference_odom_source, "reference_odom_source");
 
     sample_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>(sample_topic_, 10);
     feature_client_ = this->create_client<soislip_interfaces::srv::GetCellFeatures>(feature_service_name_);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+    initialize_odometry_subscribers();
 
     timer_ = this->create_wall_timer(
       std::chrono::duration<double>(tf_poll_period_sec_),
@@ -58,7 +85,7 @@ private:
     tf2::Transform current_wheelodom;
     tf2::Transform current_ref;
 
-    if (!get_robot_transforms(current_wheelodom, current_ref, robot_frame_, wheelodom_frame_, reference_frame_)) {
+    if (!get_robot_transforms(current_wheelodom, current_ref)) {
       skip_iteration_ = true;
       return;
     }
@@ -116,6 +143,45 @@ private:
     transform_last_ref_ = current_ref;
   }
 
+  OdomSourceType parse_source_type(const std::string & value, const std::string & parameter_name) {
+    if (value == "frame") {
+      return OdomSourceType::Frame;
+    }
+    if (value == "topic") {
+      return OdomSourceType::Topic;
+    }
+
+    RCLCPP_WARN(
+      this->get_logger(),
+      "Unknown value '%s' for parameter '%s'. Expected 'frame' or 'topic'. Falling back to 'frame'.",
+      value.c_str(), parameter_name.c_str());
+    return OdomSourceType::Frame;
+  }
+
+  void initialize_odometry_subscribers() {
+    if (wheel_odom_config_.configured_type != OdomSourceType::Frame) {
+      wheel_odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+        wheel_odom_config_.name,
+        10,
+        std::bind(&RobotExperienceCollectorNode::wheel_odom_callback, this, std::placeholders::_1));
+    }
+
+    if (reference_odom_config_.configured_type != OdomSourceType::Frame) {
+      reference_odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+        reference_odom_config_.name,
+        10,
+        std::bind(&RobotExperienceCollectorNode::reference_odom_callback, this, std::placeholders::_1));
+    }
+  }
+
+  void wheel_odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
+    latest_wheel_odom_msg_ = msg;
+  }
+
+  void reference_odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
+    latest_reference_odom_msg_ = msg;
+  }
+
   geometry_msgs::msg::Point calculate_midpoint_position(
     const tf2::Transform & transform1_ref,
     const tf2::Transform & transform2_ref) const
@@ -131,22 +197,78 @@ private:
     return point;
   }
 
-  bool get_robot_transforms(
-    tf2::Transform & transform_wheelodom,
-    tf2::Transform & transform_ref,
-    const std::string & robot_frame,
-    const std::string & wheelodom_frame,
-    const std::string & ref_frame,
+  bool get_transform_from_topic(
+    tf2::Transform & transform,
+    const nav_msgs::msg::Odometry::SharedPtr & odom_msg,
+    const std::string & source_name)
+  {
+    if (!odom_msg) {
+      RCLCPP_INFO_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "Waiting for Odometry messages on '%s'",
+        source_name.c_str());
+      return false;
+    }
+
+    const rclcpp::Time msg_stamp(odom_msg->header.stamp);
+    const rclcpp::Duration timeout = rclcpp::Duration::from_seconds(odom_timeout_sec_);
+    if (msg_stamp.nanoseconds() > 0 && (this->now() - msg_stamp) > timeout) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "Odometry topic '%s' timed out. Latest message age exceeds %.3f s.",
+        source_name.c_str(), odom_timeout_sec_);
+      return false;
+    }
+
+    if (!odom_msg->child_frame_id.empty() && odom_msg->child_frame_id != robot_frame_) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "Odometry topic '%s' uses child_frame_id '%s' but robot_frame is '%s'.",
+        source_name.c_str(), odom_msg->child_frame_id.c_str(), robot_frame_.c_str());
+      return false;
+    }
+
+    tf2::fromMsg(odom_msg->pose.pose, transform);
+    return true;
+  }
+
+  bool get_transform_from_frame(
+    tf2::Transform & transform,
+    const std::string & source_frame,
     const tf2::TimePoint & t = tf2::TimePointZero)
   {
     try {
-      tf2::fromMsg(tf_buffer_->lookupTransform(robot_frame, wheelodom_frame, t).transform, transform_wheelodom);
-      tf2::fromMsg(tf_buffer_->lookupTransform(robot_frame, ref_frame, t).transform, transform_ref);
+      tf2::fromMsg(tf_buffer_->lookupTransform(robot_frame_, source_frame, t).transform, transform);
     } catch (const tf2::TransformException & ex) {
-      RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Could not get transforms: %s", ex.what());
+      RCLCPP_INFO_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "Could not get transform from frame '%s': %s",
+        source_frame.c_str(), ex.what());
       return false;
     }
     return true;
+  }
+
+  bool get_single_transform(
+    tf2::Transform & transform,
+    const OdomSourceConfig & config,
+    const nav_msgs::msg::Odometry::SharedPtr & odom_msg,
+    const tf2::TimePoint & t = tf2::TimePointZero)
+  {
+    if (config.configured_type == OdomSourceType::Topic) {
+      return get_transform_from_topic(transform, odom_msg, config.name);
+    }
+    return get_transform_from_frame(transform, config.name, t);
+  }
+
+  bool get_robot_transforms(
+    tf2::Transform & transform_wheelodom,
+    tf2::Transform & transform_ref,
+    const tf2::TimePoint & t = tf2::TimePointZero)
+  {
+    return
+      get_single_transform(transform_wheelodom, wheel_odom_config_, latest_wheel_odom_msg_, t) &&
+      get_single_transform(transform_ref, reference_odom_config_, latest_reference_odom_msg_, t);
   }
 
   bool calculate_slip(
@@ -222,12 +344,15 @@ private:
   double wheel_separation_;
   double collector_movement_threshold_;
   double zero_movement_threshold_;
+  double odom_timeout_sec_;
   double tf_poll_period_sec_;
   std::string robot_frame_;
-  std::string wheelodom_frame_;
-  std::string reference_frame_;
+  std::string wheel_odom_;
+  std::string reference_odom_;
   std::string sample_topic_;
   std::string feature_service_name_;
+  OdomSourceConfig wheel_odom_config_;
+  OdomSourceConfig reference_odom_config_;
 
   tf2::Transform transform_last_wheelodom_;
   tf2::Transform transform_last_ref_;
@@ -235,6 +360,10 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr sample_pub_;
   rclcpp::Client<soislip_interfaces::srv::GetCellFeatures>::SharedPtr feature_client_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr wheel_odom_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr reference_odom_sub_;
+  nav_msgs::msg::Odometry::SharedPtr latest_wheel_odom_msg_;
+  nav_msgs::msg::Odometry::SharedPtr latest_reference_odom_msg_;
 
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;

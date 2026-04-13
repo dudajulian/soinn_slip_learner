@@ -31,10 +31,13 @@ robot_experience_collector_node:
   ros__parameters:
     wheel_separation: 0.512
     robot_frame: "base_link"
-    wheelodom_frame: "odom"
-    reference_frame: "map"
+    wheel_odom: "/tug_husky/platform/odom"
+    wheel_odom_source: "topic"
+    reference_odom: "/jetson/zed/odom"
+    reference_odom_source: "topic"
     collector_movement_threshold: 0.3
     zero_movement_threshold: 0.05
+    odom_timeout_sec: 0.5
     sample_topic: "/experience_samples"
     feature_service_name: "get_cell_features"
 
