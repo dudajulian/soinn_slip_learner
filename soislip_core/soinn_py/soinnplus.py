@@ -4,7 +4,6 @@ from .color_utils import ColorUtils as cu
 from scipy.sparse import csr_matrix, lil_matrix
 from scipy.stats import iqr, median_abs_deviation
 import matplotlib.pyplot as plt
-import networkx as nx #TODO maybe needs to be installed first
 
 #TODO check if all functions are functions and indices are indices
 #TODO check all dimensions (vectors, matrices) are corerect
@@ -417,19 +416,39 @@ class SoinnPlus:
     # TODO implement delete_old_edges_original
 
     def collect_cluster_edge_age(self, seed):
-        
-        G = nx.from_numpy_array(self.adjacency_mat)  # Create an undirected graph from adjacency matrix
+        # Traverse the connected component of `seed` directly on the sparse adjacency
+        # matrix and collect unique undirected edge ages.
+        n_nodes = self.adjacency_mat.shape[0]
+        if seed < 0 or seed >= n_nodes:
+            return np.array([])
 
-        dfs_edges = list(nx.edge_dfs(G, source=seed))
+        visited = set()
+        stack = [seed]
+        unique_edges = set()
 
-        # Get unique edges (DFS might not repeat edges anyway, but for safety)
-        unique_edges = set(dfs_edges)
+        while stack:
+            node = stack.pop()
+            if node in visited:
+                continue
+            visited.add(node)
 
-        # Retrieve edge weights (edge age) if they exist
+            neighbors = self.adjacency_mat.rows[node]
+            weights = self.adjacency_mat.data[node]
+            for neighbor, weight in zip(neighbors, weights):
+                if weight <= 0:
+                    continue
+                if neighbor == node:
+                    continue
+                if neighbor not in visited:
+                    stack.append(neighbor)
+                edge = (node, neighbor) if node < neighbor else (neighbor, node)
+                unique_edges.add(edge)
+
         edge_age = []
         for u, v in unique_edges:
-            weight = G[u][v]['weight'] # If this returns KeyError, then 'weight' attribute does not exist
-            edge_age.append(weight)
+            weight = self.adjacency_mat[u, v]
+            if weight > 0:
+                edge_age.append(weight)
 
         return np.array(edge_age)
 
