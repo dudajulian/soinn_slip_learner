@@ -61,8 +61,8 @@ declare -A cmds=(
 startup_order=(
   static_tf_zed
   zed_node
-  elevation_mapping
   camera_odom_republisher
+  elevation_mapping
   soislip_demo
   # rviz
   teleop_key
