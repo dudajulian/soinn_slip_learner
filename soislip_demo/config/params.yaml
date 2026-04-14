@@ -11,6 +11,22 @@ gridmap_feature_extractor_node:
 #     input_topic: "/gridmap"
 #     latent_dim: 32
 
+robot_experience_collector_node:
+  ros__parameters:
+    wheel_separation: 0.512
+    robot_frame: "base_link"
+    wheel_odom: "/tug_husky/platform/odom"
+    wheel_odom_source: "topic"
+    reference_odom: "/visual_odom"
+    reference_odom_source: "topic"
+    sample_distance: 0.2
+    min_distance_threshold: 0.05
+    min_velocity_threshold: 0.05 # ignored if wheel_odom_source is "frame"
+    min_acceleration_threshold: 0.1 # ignored if no IMU is used
+    odom_timeout_sec: 0.5
+    output_topic: "/experience_samples"
+    feature_service_name: "get_cell_features"
+
 soinn_training_node:
   ros__parameters:
     model_path: "$(find-pkg-share soislip_demo)/models/soinn_model.pkl"
@@ -26,20 +42,6 @@ soinn_prediction_node:
     service_name: "predict_batch"
     feature_dim: 0
     model_reload_period_sec: 20.0
-
-robot_experience_collector_node:
-  ros__parameters:
-    wheel_separation: 0.512
-    robot_frame: "base_link"
-    wheel_odom: "/tug_husky/platform/odom"
-    wheel_odom_source: "topic"
-    reference_odom: "/jetson/zed/odom"
-    reference_odom_source: "topic"
-    collector_movement_threshold: 0.3
-    zero_movement_threshold: 0.05
-    odom_timeout_sec: 0.5
-    sample_topic: "/experience_samples"
-    feature_service_name: "get_cell_features"
 
 slip_prediction_manager:
   ros__parameters:

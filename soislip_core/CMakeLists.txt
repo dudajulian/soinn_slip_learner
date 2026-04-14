@@ -69,11 +69,21 @@ ament_target_dependencies(slip_prediction_manager
   grid_map_msgs
 )
 
+add_executable(camera_odom_republisher src/camera_odom_republisher.cpp)
+ament_target_dependencies(camera_odom_republisher
+  rclcpp
+  nav_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+)
+
 # Install C++ executables
 install(TARGETS
   gridmap_feature_extractor_node
   robot_experience_collector_node
   slip_prediction_manager
+  camera_odom_republisher
   DESTINATION lib/${PROJECT_NAME}
 )
 

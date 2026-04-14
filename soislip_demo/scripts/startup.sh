@@ -31,6 +31,9 @@ declare -A cmds=(
   [static_tf_zed]="ros2 run tf2_ros static_transform_publisher \
     0.0 0.0 0.71 0 0.05 0 base_link zed_camera_link \
     --ros-args -r /tf:=/tug_husky/tf -r /tf_static:=/tug_husky/tf_static"
+  [camera_odom_republisher]="ros2 run soislip_core camera_odom_republisher --ros-args \
+    -p input_topic:=/jetson/zed/odom -p output_topic:=/visual_odom -p base_frame:=base_link \
+    -p publish_tf:=true -r /tf:=/tug_husky/tf -r /tf_static:=/tug_husky/tf_static"
   [elevation_mapping]="ros2 run elevation_mapping elevation_mapping \
     --ros-args -r /tf:=/tug_husky/tf -r /tf_static:=/tug_husky/tf_static \
     --params-file '$ELEVATION_CONFIG_DIR/zed2_robot.yaml' \
@@ -59,6 +62,7 @@ startup_order=(
   static_tf_zed
   zed_node
   elevation_mapping
+  camera_odom_republisher
   soislip_demo
   # rviz
   teleop_key

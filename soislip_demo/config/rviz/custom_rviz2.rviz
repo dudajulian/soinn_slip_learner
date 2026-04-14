@@ -7,7 +7,7 @@ Panels:
         - /Global Options1
         - /GridMap1
         - /TF1
-        - /RobotModel1/Status1
+        - /TF1/Frames1
       Splitter Ratio: 0.5
     Tree Height: 1080
   - Class: rviz_common/Selection
@@ -79,61 +79,63 @@ Visualization Manager:
       Enabled: true
       Frame Timeout: 15
       Frames:
-        All Enabled: true
+        All Enabled: false
         base_footprint:
-          Value: true
+          Value: false
         base_link:
           Value: true
+        camera_odom:
+          Value: true
         default_mount:
-          Value: true
+          Value: false
         front_bumper_base_link:
-          Value: true
+          Value: false
         front_bumper_link:
-          Value: true
+          Value: false
         front_bumper_mount:
-          Value: true
+          Value: false
         front_left_wheel:
-          Value: true
+          Value: false
         front_right_wheel:
-          Value: true
+          Value: false
         inertial_link:
-          Value: true
+          Value: false
         laser:
-          Value: true
+          Value: false
         odom:
           Value: true
         rear_bumper_base_link:
-          Value: true
+          Value: false
         rear_bumper_link:
-          Value: true
+          Value: false
         rear_bumper_mount:
-          Value: true
+          Value: false
         rear_left_wheel:
-          Value: true
+          Value: false
         rear_right_wheel:
-          Value: true
+          Value: false
         top_chassis_link:
-          Value: true
+          Value: false
         zed_baro_link:
-          Value: true
+          Value: false
         zed_camera_center:
-          Value: true
+          Value: false
         zed_camera_link:
-          Value: true
+          Value: false
         zed_left_camera_frame:
-          Value: true
+          Value: false
         zed_left_camera_frame_optical:
-          Value: true
+          Value: false
         zed_mag_link:
-          Value: true
+          Value: false
         zed_right_camera_frame:
-          Value: true
+          Value: false
         zed_right_camera_frame_optical:
-          Value: true
+          Value: false
         zed_temp_left_link:
-          Value: true
+          Value: false
         zed_temp_right_link:
-          Value: true
+          Value: false
       Marker Scale: 1
       Name: TF
       Show Arrows: true
@@ -143,6 +145,8 @@ Visualization Manager:
         odom:
           base_link:
             base_footprint:
+              {}
+            camera_odom:
               {}
             default_mount:
               laser:
@@ -279,7 +283,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    Fixed Frame: odom
+    Fixed Frame: camera_odom
     Frame Rate: 30
   Name: root
   Tools:
@@ -322,25 +326,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 15.746725082397461
+      Distance: 18.189533233642578
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.3204898536205292
-        Y: 0.9117581844329834
-        Z: -0.008691493421792984
+        X: 4.352100849151611
+        Y: 0.6250379681587219
+        Z: 0.3396444320678711
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.9352039098739624
+      Pitch: 1.4847971200942993
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 0.4254017174243927
+      Yaw: 3.478861093521118
     Saved: ~
 Window Geometry:
   Displays:

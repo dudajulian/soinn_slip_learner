@@ -38,10 +38,12 @@ public:
     this->declare_parameter("reference_odom", "map");
     this->declare_parameter("wheel_odom_source", "frame");
     this->declare_parameter("reference_odom_source", "frame");
-    this->declare_parameter("collector_movement_threshold", 0.3);
-    this->declare_parameter("zero_movement_threshold", 0.05);
+    this->declare_parameter("sample_distance", 0.3);
+    this->declare_parameter("min_distance_threshold", 0.05);
+    this->declare_parameter("min_velocity_threshold", 0.05);
+    this->declare_parameter("min_acceleration_threshold", 0.1);
     this->declare_parameter("odom_timeout_sec", 0.5);
-    this->declare_parameter("sample_topic", "/experience_samples");
+    this->declare_parameter("output_topic", "/experience_samples");
     this->declare_parameter("feature_service_name", "get_cell_features");
     this->declare_parameter("tf_poll_period_sec", 0.05); // 20 Hz like the /tf topic
 
@@ -53,10 +55,12 @@ public:
     this->get_parameter("reference_odom", reference_odom_);
     this->get_parameter("wheel_odom_source", wheel_odom_source);
     this->get_parameter("reference_odom_source", reference_odom_source);
-    this->get_parameter("collector_movement_threshold", collector_movement_threshold_);
-    this->get_parameter("zero_movement_threshold", zero_movement_threshold_);
+    this->get_parameter("sample_distance", sample_distance_);
+    this->get_parameter("min_distance_threshold", min_distance_threshold_);
+    this->get_parameter("min_acceleration_threshold", min_acceleration_threshold_);
     this->get_parameter("odom_timeout_sec", odom_timeout_sec_);
-    this->get_parameter("sample_topic", sample_topic_);
+    this->get_parameter("min_velocity_threshold", min_velocity_threshold_);
+    this->get_parameter("output_topic", output_topic_);
     this->get_parameter("feature_service_name", feature_service_name_);
     this->get_parameter("tf_poll_period_sec", tf_poll_period_sec_);
 
@@ -65,7 +69,7 @@ public:
     reference_odom_config_.name = reference_odom_;
     reference_odom_config_.configured_type = parse_source_type(reference_odom_source, "reference_odom_source");
 
-    sample_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>(sample_topic_, 10);
+    sample_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>(output_topic_, 10);
     feature_client_ = this->create_client<soislip_interfaces::srv::GetCellFeatures>(feature_service_name_);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -101,6 +105,10 @@ private:
       skip_iteration_ = false;
       transform_last_wheelodom_ = current_wheelodom;
       transform_last_ref_ = current_ref;
+      return;
+    }
+
+    if (!check_minimum_velocity()) {
       return;
     }
 
@@ -288,10 +296,10 @@ private:
     compute_traveled_wheeldistances(displacement_wheelodom, dsl_wheelodom, dsr_wheelodom);
     compute_traveled_wheeldistances(displacement_ref, dsl_ref, dsr_ref);
 
-    if (std::fabs(dsl_wheelodom) < collector_movement_threshold_ &&
-      std::fabs(dsr_wheelodom) < collector_movement_threshold_ &&
-      std::fabs(dsl_ref) < collector_movement_threshold_ &&
-      std::fabs(dsr_ref) < collector_movement_threshold_)
+    if (std::fabs(dsl_wheelodom) < sample_distance_ &&
+      std::fabs(dsr_wheelodom) < sample_distance_ &&
+      std::fabs(dsl_ref) < sample_distance_ &&
+      std::fabs(dsr_ref) < sample_distance_)
     {
       return false;
     }
@@ -313,7 +321,7 @@ private:
   double compute_normalized_slip_component(double wheelodom_distance, double ref_distance) const {
     const double scale = std::max(std::fabs(wheelodom_distance), std::fabs(ref_distance));
     // if (scale <= std::numeric_limits<double>::epsilon()) {
-    if (scale <= zero_movement_threshold_) {
+    if (scale <= min_distance_threshold_) {
       return 0.0;
     }
 
@@ -339,17 +347,40 @@ private:
     dsl = ds - yaw * wheel_separation_ / 2.0;
   }
 
+  bool check_minimum_velocity() {
+    if (!latest_wheel_odom_msg_) {
+      return false;
+    }
+
+    const double vx = latest_wheel_odom_msg_->twist.twist.linear.x;
+    const double vy = latest_wheel_odom_msg_->twist.twist.linear.y;
+    const double vz = latest_wheel_odom_msg_->twist.twist.linear.z;
+    const double velocity = std::sqrt(vx * vx + vy * vy + vz * vz);
+
+    if (velocity < min_velocity_threshold_) {
+      RCLCPP_DEBUG_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "Wheel odometry velocity %.4f m/s below minimum threshold %.4f m/s. Skipping slip calculation.",
+        velocity, min_velocity_threshold_);
+      return false;
+    }
+
+    return true;
+  }
+
   bool initialized_{false};
   bool skip_iteration_{false};
   double wheel_separation_;
-  double collector_movement_threshold_;
-  double zero_movement_threshold_;
+  double sample_distance_;
+  double min_distance_threshold_;
+  double min_acceleration_threshold_;
   double odom_timeout_sec_;
+  double min_velocity_threshold_;
   double tf_poll_period_sec_;
   std::string robot_frame_;
   std::string wheel_odom_;
   std::string reference_odom_;
-  std::string sample_topic_;
+  std::string output_topic_;
   std::string feature_service_name_;
   OdomSourceConfig wheel_odom_config_;
   OdomSourceConfig reference_odom_config_;
