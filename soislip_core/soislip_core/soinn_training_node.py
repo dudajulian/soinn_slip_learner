@@ -19,14 +19,12 @@ class SoinnTrainingNode(Node):
         self.declare_parameter('init_new_model', True)
         self.declare_parameter('sample_topic', '/experience_samples')
         self.declare_parameter('input_dimension', 0)
-        self.declare_parameter('max_edge_age', 50)
         self.declare_parameter('auto_save_period_sec', 60.0)
 
         self.model_path = self.get_parameter('model_path').value
         self.init_new_model = self.get_parameter('init_new_model').value
         self.sample_topic = self.get_parameter('sample_topic').value
         self.input_dimension = int(self.get_parameter('input_dimension').value)
-        self.max_edge_age = int(self.get_parameter('max_edge_age').value)
         self.auto_save_period_sec = float(self.get_parameter('auto_save_period_sec').value)
 
         self.training_samples = 0
@@ -67,9 +65,9 @@ class SoinnTrainingNode(Node):
             return None
 
         self.get_logger().info(
-            f'Initializing new SOINN model (dim={self.input_dimension}, max_edge_age={self.max_edge_age})'
+            f'Initializing new SOINN model (dim={self.input_dimension})'
         )
-        return SoinnPlus(dim=self.input_dimension, age_max=self.max_edge_age)
+        return SoinnPlus(dim=self.input_dimension)
 
     def _experience_callback(self, msg: Float32MultiArray) -> None:
         sample = np.array(msg.data, dtype=float)
@@ -78,10 +76,12 @@ class SoinnTrainingNode(Node):
             return
 
         if self.soinn is None:
-            inferred_dim = int(sample.size)
-            self.soinn = SoinnPlus(dim=inferred_dim, age_max=self.max_edge_age)
-            self.input_dimension = inferred_dim
-            self.get_logger().info(f'Initialized SOINN model from first sample with dim={inferred_dim}')
+            self.get_logger().info(
+               f'Initializing new model based on first received sample (size={sample.size}).'
+            )
+            self.input_dimension = int(sample.size)
+            self.soinn = self._initialize_model()
+        
 
         if sample.size != self.soinn.dimension:
             self.get_logger().warn(

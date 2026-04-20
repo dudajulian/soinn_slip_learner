@@ -44,7 +44,7 @@ declare -A cmds=(
   [soislip_demo]="ros2 launch soislip_core soislip.launch.py \
     tf_topic:=/tug_husky/tf \
     tf_static_topic:=/tug_husky/tf_static \
-    params_file:='$DEMO_SHARE/config/params.yaml'"
+    params_file:='$DEMO_PKG_DIR/config/params.yaml'"
 #     > '$LOG_DIR/soislip_demo.log' 2>&1"
   [rviz]="ros2 run rviz2 rviz2 \
     --display-config '$RVIZ_CONFIG_FILE' \

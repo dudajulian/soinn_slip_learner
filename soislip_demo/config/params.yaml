@@ -29,16 +29,19 @@ robot_experience_collector_node:
 
 soinn_training_node:
   ros__parameters:
-    model_path: "$(find-pkg-share soislip_demo)/models/soinn_model.pkl"
+    model_path:  "/home/jetta/thesis_ws/soinn_slip_learner/soislip_demo/models/soinn_model.pkl" 
+    # "$(find-pkg-share soislip_demo)/models/soinn_model.pkl"
     init_new_model: false
     sample_topic: "/experience_samples"
     input_dimension: 0
-    max_edge_age: 50
-    auto_save_period_sec: 120.0
+    model_age_max: 1000
+    model_lambda: 10
+    auto_save_period_sec: 20.0
 
 soinn_prediction_node:
   ros__parameters:
-    model_path: "$(find-pkg-share soislip_demo)/models/soinn_model.pkl"
+    model_path: "/home/jetta/thesis_ws/soinn_slip_learner/soislip_demo/models/soinn_model.pkl"
+    # "$(find-pkg-share soislip_demo)/models/soinn_model.pkl"
     service_name: "predict_batch"
     feature_dim: 0
     model_reload_period_sec: 20.0

@@ -17,8 +17,9 @@ soinn_training_node:
     init_new_model: false
     sample_topic: "/experience_samples"
     input_dimension: 0
-    max_edge_age: 50
-    auto_save_period_sec: 120.0
+    model_age_max: 1000
+    model_lambda: 10
+    auto_save_period_sec: 20.0
 
 soinn_prediction_node:
   ros__parameters:
