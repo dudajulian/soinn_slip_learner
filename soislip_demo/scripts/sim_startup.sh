@@ -28,7 +28,8 @@ declare -A cmds=(
   [coppelia_controller]="ros2 launch coppelia_ros2_control coppelia_control.launch.py \
     controller_name:=platform_velocity_controller \
     controller_config_path:='$ROBOT_RESOURCE_DIR/control.yaml' \
-    robot_description_path:='$ROBOT_RESOURCE_DIR/robot.urdf' "
+    robot_description_path:='$ROBOT_RESOURCE_DIR/robot.urdf' \
+    use_sim_time:=true "
 #     > '$LOG_DIR/coppelia_controller.log' 2>&1"
   [elevation_mapping]="ros2 run elevation_mapping elevation_mapping \
     --ros-args \
@@ -41,7 +42,8 @@ declare -A cmds=(
     params_file:='$DEMO_SHARE/config/sim_params.yaml' "
 #     > '$LOG_DIR/soislip_demo.log' 2>&1"
   [rviz]="ros2 run rviz2 rviz2 \
-    --display-config '$RVIZ_CONFIG_FILE'"
+    --display-config '$RVIZ_CONFIG_FILE'
+    --ros-args -p use_sim_time:=true "
   [teleop_key]="ros2 run teleop_twist_keyboard teleop_twist_keyboard \
     --ros-args -p stamped:=true -p use_sim_time:=true \
     --remap cmd_vel:=/platform_velocity_controller/cmd_vel" 
@@ -57,8 +59,8 @@ startup_order=(
   elevation_mapping
   soislip_demo
   rviz
-#   teleop_key
-  teleop_joy
+  teleop_key
+  # teleop_joy
 )
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then

@@ -102,7 +102,7 @@ class SoinnPredictionNode(Node):
         elif self.feature_dim > 0:
             feature_dim = self.feature_dim
         else:
-            feature_dim = int(self.soinn.dimension - 1)
+            feature_dim = int(self.soinn.dimension)
 
         if feature_dim <= 0:
             response.success = Bool(data=False)
@@ -121,26 +121,33 @@ class SoinnPredictionNode(Node):
             return response
 
         batch = raw.reshape((-1, feature_dim))
-        predictions = []
-        confidence_scores = []
+        batch_p_mean = []
+        batch_p_var = []
+        first_of_batch = True
+        count_successful_inferences = 0
         for index, signal in enumerate(batch):
             try:
-                prediction, confidence = self.soinn.inference(signal)
-                if prediction is None:
-                    predictions.append(float('nan'))
-                    confidence_scores.append(float('nan'))
+                p_mean, p_var = self.soinn.inference(signal, label_clusters=first_of_batch)
+                if p_mean is None:
+                    batch_p_mean.append(float('nan'))
                 else:
-                    predictions.append(float(prediction))
-                    confidence_scores.append(float(confidence))
+                    batch_p_mean.append(float(p_mean))
+                    count_successful_inferences += 1
+                if p_var is None:
+                    batch_p_var.append(float('nan'))
+                else:
+                    batch_p_var.append(float(p_var))
+
             except Exception as error:
                 self.get_logger().error(f'Inference failed for sample index {index}: {error}')
-                predictions.append(float('nan'))
-                confidence_scores.append(float('nan'))
+                batch_p_mean.append(float('nan'))
+                batch_p_var.append(float('nan'))
+            first_of_batch = False
 
-        response.predictions = Float32MultiArray(data=predictions)
-        response.confidence_scores = Float32MultiArray(data=confidence_scores)
+        response.predictions = Float32MultiArray(data=batch_p_mean)
+        response.confidence_scores = Float32MultiArray(data=batch_p_var)
         response.success = Bool(data=True)
-        response.message = String(data=f'Produced {len(predictions)} predictions')
+        response.message = String(data=f'{count_successful_inferences} samples produced successful predictions, {len(batch) - count_successful_inferences} samples failed')
         return response
 
 

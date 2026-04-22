@@ -10,6 +10,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
+#include <soislip_interfaces/msg/soinn_sample.hpp>
 #include <tf2/exceptions.h>
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -69,7 +70,7 @@ public:
     reference_odom_config_.name = reference_odom_;
     reference_odom_config_.configured_type = parse_source_type(reference_odom_source, "reference_odom_source");
 
-    sample_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>(output_topic_, 10);
+    sample_pub_ = this->create_publisher<soislip_interfaces::msg::SOINNSample>(output_topic_, 10);
     feature_client_ = this->create_client<soislip_interfaces::srv::GetCellFeatures>(feature_service_name_);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -81,7 +82,7 @@ public:
       std::chrono::duration<double>(tf_poll_period_sec_),
       std::bind(&RobotExperienceCollectorNode::timer_callback, this));
 
-    RCLCPP_INFO(this->get_logger(), "robot_experience_collector_node started");
+    RCLCPP_INFO(this->get_logger(), "robot_experience_collector_node started, yay");
   }
 
 private:
@@ -90,9 +91,23 @@ private:
     tf2::Transform current_ref;
 
     if (!get_robot_transforms(current_wheelodom, current_ref)) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "Failed to get robot transforms (wheel_odom='%s', reference_odom='%s')",
+        wheel_odom_.c_str(), reference_odom_.c_str());
       skip_iteration_ = true;
       return;
     }
+
+    RCLCPP_DEBUG_THROTTLE(
+      this->get_logger(), *this->get_clock(), 2000,
+      "Got robot transforms: wheel_odom=(%.2f, %.2f), reference_odom=(%.2f, %.2f)",
+      current_wheelodom.getOrigin().x(), current_wheelodom.getOrigin().y(),
+      current_ref.getOrigin().x(), current_ref.getOrigin().y());
+    RCLCPP_DEBUG_THROTTLE(
+      this->get_logger(), *this->get_clock(), 2000,
+      "initialized_=%s, skip_iteration_=%s",
+      initialized_ ? "true" : "false", skip_iteration_ ? "true" : "false");
 
     if (!initialized_) {
       transform_last_wheelodom_ = current_wheelodom;
@@ -109,11 +124,17 @@ private:
     }
 
     if (!check_minimum_velocity()) {
+      RCLCPP_DEBUG_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "Minimum velocity check failed");
       return;
     }
 
     float slip = 0.0F;
     if (!calculate_slip(transform_last_wheelodom_, transform_last_ref_, current_wheelodom, current_ref, slip)) {
+      RCLCPP_DEBUG_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "Slip calculation failed (displacement too small or below threshold)");
       return;
     }
 
@@ -136,10 +157,11 @@ private:
               return;
             }
 
-            std_msgs::msg::Float32MultiArray sample;
-            sample.data.reserve(response->features.data.size() + 1);
-            sample.data.push_back(slip);
-            sample.data.insert(sample.data.end(), response->features.data.begin(), response->features.data.end());
+            soislip_interfaces::msg::SOINNSample sample;
+            sample.features.assign(response->features.data.begin(), response->features.data.end());
+            sample.label = slip;
+            sample.has_label = true;
+            RCLCPP_INFO(this->get_logger(), "Publishing experience sample with %zu features and label %.3f", sample.features.size(), sample.label);
             sample_pub_->publish(sample);
           } catch (const std::exception & ex) {
             RCLCPP_WARN(this->get_logger(), "Feature service response failed: %s", ex.what());
@@ -348,6 +370,14 @@ private:
   }
 
   bool check_minimum_velocity() {
+    if (wheel_odom_config_.configured_type == OdomSourceType::Frame
+      || reference_odom_config_.configured_type == OdomSourceType::Frame) {
+      // If using TF frames, we don't have direct access to velocity information.
+      // We could compute it from the change in position over time, but that would be more complex and less accurate.
+      // For now, we will skip the minimum velocity check when using TF frames.
+      return true;
+    }
+
     if (!latest_wheel_odom_msg_) {
       return false;
     }
@@ -389,7 +419,7 @@ private:
   tf2::Transform transform_last_ref_;
 
   rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr sample_pub_;
+  rclcpp::Publisher<soislip_interfaces::msg::SOINNSample>::SharedPtr sample_pub_;
   rclcpp::Client<soislip_interfaces::srv::GetCellFeatures>::SharedPtr feature_client_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr wheel_odom_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr reference_odom_sub_;

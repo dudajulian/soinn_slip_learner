@@ -31,7 +31,7 @@ soinn_training_node:
   ros__parameters:
     model_path:  "/home/jetta/thesis_ws/soinn_slip_learner/soislip_demo/models/soinn_model.pkl" 
     # "$(find-pkg-share soislip_demo)/models/soinn_model.pkl"
-    init_new_model: false
+    init_new_model: true
     sample_topic: "/experience_samples"
     input_dimension: 0
     model_age_max: 1000

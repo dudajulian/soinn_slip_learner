@@ -180,6 +180,13 @@ Main parameters are in `config/soislip_params.yaml`:
 - `soinn_prediction_node`
         - `model_path`, `service_name`, `feature_dim`, `model_reload_period_sec`
 
+> **Note — stale model on first prediction:** `soinn_prediction_node` loads whatever file exists at `model_path` as soon as it is available, without waiting for `soinn_training_node` to finish initialising a new model.
+> If you change the input dimension or use-case and set `init_new_model: True` in `soinn_training_node`, but an old model file still exists at the same `model_path`, the prediction node will silently load that old file on startup and continue serving stale predictions.
+> This can happen because `soinn_training_node` defers model creation until the first training sample arrives when `input_dimension: 0`, so the new model file may not exist yet at the time the prediction node first tries to load it.
+> **To avoid this**, when resetting the model do one of the following before starting the nodes:
+> - Change `model_path` in both `soinn_training_node` and `soinn_prediction_node` to a new path.
+> - Delete or move the existing model file at the old `model_path`.
+
 - `slip_prediction_manager`
         - `slip_prediction_map_topic`, `elevation_map_topic`
         - `slip_layer_name`, `confidence_layer_name`

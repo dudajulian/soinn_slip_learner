@@ -7,9 +7,9 @@ from pathlib import Path
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32MultiArray
 
 from soinn_py import SoinnPlus
+from soislip_interfaces.msg import SOINNSample
 
 
 class SoinnTrainingNode(Node):
@@ -35,7 +35,7 @@ class SoinnTrainingNode(Node):
         self.soinn = self._initialize_model()
 
         self.subscription = self.create_subscription(
-            Float32MultiArray,
+            SOINNSample,
             self.sample_topic,
             self._experience_callback,
             10,
@@ -47,6 +47,7 @@ class SoinnTrainingNode(Node):
         )
 
     def _initialize_model(self) -> SoinnPlus:
+        self.get_logger().info('init_new_model is set to {}, input_dimension={}'.format(self.init_new_model is True, self.input_dimension))
         if (not self.init_new_model) and os.path.exists(self.model_path):
             try:
                 with open(self.model_path, 'rb') as file:
@@ -69,9 +70,11 @@ class SoinnTrainingNode(Node):
         )
         return SoinnPlus(dim=self.input_dimension)
 
-    def _experience_callback(self, msg: Float32MultiArray) -> None:
-        sample = np.array(msg.data, dtype=float)
-        if sample.size == 0:
+    def _experience_callback(self, msg: SOINNSample) -> None:
+        sample = np.array(msg.features, dtype=float)
+        label = float(msg.label) if msg.has_label else None
+
+        if sample.size <= 0:
             self.get_logger().warn('Received empty experience sample; skipping')
             return
 
@@ -81,7 +84,6 @@ class SoinnTrainingNode(Node):
             )
             self.input_dimension = int(sample.size)
             self.soinn = self._initialize_model()
-        
 
         if sample.size != self.soinn.dimension:
             self.get_logger().warn(
@@ -90,7 +92,7 @@ class SoinnTrainingNode(Node):
             return
 
         try:
-            self.soinn.input_signal(sample)
+            self.soinn.input_signal(sample, label=label)
             self.training_samples += 1
             if self.training_samples % 100 == 0:
                 self.get_logger().info(f'Trained on {self.training_samples} samples')

@@ -19,7 +19,7 @@ def _make_small_model(dim=3):
     model = SoinnPlus(dim=dim)
     # Disable periodic pruning to keep tests deterministic.
     model.delete_noise_handler = lambda: None
-    model.delete_node_period = 10**9
+    model.label_period = 10**9
     return model
 
 
