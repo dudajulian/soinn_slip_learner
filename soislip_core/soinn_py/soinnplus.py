@@ -43,7 +43,7 @@ class SoinnPlus:
         self.winner_link_sim_th_mean = np.zeros((1,2))
         self.nodes = [] # List of node weight vectors (row vectors with shape (1, dimension))
         self.winning_times = [] # List of winning times for each node (number of times each node has won)
-        self.win_nums = [] # List of win numbers for each node (number of times each node has won)
+        self.idle_since = [] # List of signal timestamps the node has been idle since (node has not won since this signal number)
         self.labels = [] # List of labels for each node
         self.label_times = [] # List of label update times for each node (number of times each node's label has been updated)
         self.predictions = [] # List of label predictions for each node (tuple of (mean, variance))
@@ -217,7 +217,7 @@ class SoinnPlus:
         #TODO if signal_num becomes very large we might want to reset it.
 
         #SANITY CHECK
-        if not len(self.nodes) == self.adjacency_mat.shape[0] == len(self.winning_times) == len(self.win_nums):
+        if not len(self.nodes) == self.adjacency_mat.shape[0] == len(self.winning_times) == len(self.idle_since):
             raise ValueError("Inconsistent SOINN state: nodes, adjacency matrix, winning times, and win nums should all have the same length.")
         
     def show(self, save=False, save_path="tmp.png"):
@@ -320,7 +320,7 @@ class SoinnPlus:
         num = len(self.nodes)
         self.nodes.append(signal)
         self.winning_times.append(1)
-        self.win_nums.append(self.signal_num)
+        self.idle_since.append(self.signal_num)
         self.labels.append(label)
         if label is not None:
             self.label_times.append(1)
@@ -396,7 +396,7 @@ class SoinnPlus:
         self.winning_times[winner_index] += 1
         w = self.nodes[winner_index]
         self.nodes[winner_index] = w + (signal - w) / self.winning_times[winner_index]
-        self.win_nums[winner_index] = self.signal_num # Equivalent with setting the idle time to 0
+        self.idle_since[winner_index] = self.signal_num # Equivalent with setting the idle time to 0
         self.update_label(winner_index, label)
 
         if self.enable_tracking:
@@ -486,9 +486,6 @@ class SoinnPlus:
         pals = np.array(self.adjacency_mat.rows[winner_index])
         c = np.percentile(cluster_ages, 75)
         th = self.param_edge * iqr(cluster_ages)
-
-        if th == 0:
-            return 
         
         outlierness = c + th
         ratio = self.edge_count_del / (self.edge_count_del + cluster_ages.size)
@@ -514,10 +511,9 @@ class SoinnPlus:
         mask = np.ones(len(self.nodes), dtype=bool)
         mask[indices] = False
 
-        # O(n) filter instead of O(n*k) sequential del
         self.nodes = [n for i, n in enumerate(self.nodes) if mask[i]]
         self.winning_times = [t for i, t in enumerate(self.winning_times) if mask[i]]
-        self.win_nums = [n for i, n in enumerate(self.win_nums) if mask[i]]
+        self.idle_since = [n for i, n in enumerate(self.idle_since) if mask[i]]
         self.labels = [l for i, l in enumerate(self.labels) if mask[i]]
         self.predictions = [p for i, p in enumerate(self.predictions) if mask[i]]
 
@@ -538,7 +534,7 @@ class SoinnPlus:
         if not np.any(active_nodes): # Do not delete if no active nodes are available.
             return
 
-        win_nums_nparray = np.array(self.win_nums)
+        win_nums_nparray = np.array(self.idle_since)
         idle_times = self.signal_num - win_nums_nparray
         winning_times = np.array(self.winning_times, dtype=float)
         unutility = idle_times / winning_times
