@@ -24,6 +24,9 @@ find_package(std_msgs REQUIRED)
 find_package(grid_map_core REQUIRED)
 find_package(grid_map_ros REQUIRED)
 find_package(grid_map_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(pcl_conversions REQUIRED)
+find_package(PCL REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
@@ -32,9 +35,21 @@ find_package(tf2_geometry_msgs REQUIRED)
 include_directories(
   include
   ${EIGEN3_INCLUDE_DIRS}
+  ${PCL_INCLUDE_DIRS}
 )
 
 # Create C++ executables
+add_executable(featuremap_publisher src/featuremap_publisher.cpp)
+ament_target_dependencies(featuremap_publisher
+  rclcpp
+  sensor_msgs
+  grid_map_core
+  grid_map_ros
+  grid_map_msgs
+  pcl_conversions
+)
+target_link_libraries(featuremap_publisher ${PCL_LIBRARIES})
+
 add_executable(gridmap_feature_extractor_node src/gridmap_feature_extractor.cpp)
 ament_target_dependencies(gridmap_feature_extractor_node
   rclcpp
@@ -80,6 +95,7 @@ ament_target_dependencies(camera_odom_republisher
 
 # Install C++ executables
 install(TARGETS
+  featuremap_publisher
   gridmap_feature_extractor_node
   robot_experience_collector_node
   slip_prediction_manager
