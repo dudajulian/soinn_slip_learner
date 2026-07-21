@@ -25,7 +25,7 @@ def _make_small_model(dim=3):
 
 def test_check_signal_accepts_list_and_shape():
     model = SoinnPlus(dim=3)
-    signal = model.check_signal([1.0, 2.0, 3.0])
+    signal = model._check_signal([1.0, 2.0, 3.0])
     assert signal.shape == (1, 3)
     assert np.allclose(signal, np.array([[1.0, 2.0, 3.0]]))
 
@@ -33,7 +33,7 @@ def test_check_signal_accepts_list_and_shape():
 def test_check_signal_rejects_wrong_length():
     model = SoinnPlus(dim=3)
     with pytest.raises(ValueError):
-        model.check_signal([1.0, 2.0])
+        model._check_signal([1.0, 2.0])
 
 
 def test_input_signal_initializes_first_three_nodes():
@@ -94,7 +94,7 @@ def test_inference_returns_prediction_and_confidence_for_nearby_signal():
 def test_collect_cluster_edge_age_returns_nonempty_for_connected_nodes():
     model = _make_small_model(dim=3)
     for point in ([1.0, 0.0, 0.0], [2.0, 1.0, 0.0], [3.0, 0.0, 1.0]):
-        model.add_node(model.check_signal(point))
+        model.add_node(model._check_signal(point))
 
     model.add_edge([0, 1])
     model.add_edge([1, 2])

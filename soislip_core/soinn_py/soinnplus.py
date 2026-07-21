@@ -1,9 +1,15 @@
 import numpy as np
 import sys #TODO remove if not needed anymore
+from typing import Callable, Sequence, TypeAlias
 from .color_utils import ColorUtils as cu
 from scipy.sparse import csr_matrix, lil_matrix
 from scipy.stats import iqr, median_abs_deviation
 import matplotlib.pyplot as plt
+
+SignalLike: TypeAlias = np.ndarray | csr_matrix | list[float]
+Prediction: TypeAlias = tuple[float | None, float | None]
+BatchSignals: TypeAlias = Sequence[SignalLike] | np.ndarray
+BatchPredictions: TypeAlias = Sequence[Prediction] | np.ndarray
 
 #TODO check if all functions are functions and indices are indices
 #TODO check all dimensions (vectors, matrices) are corerect
@@ -12,7 +18,7 @@ import matplotlib.pyplot as plt
 #TODO unit tests the individual functions
 
 class SoinnPlus:
-    def __init__(self, dim=2):
+    def __init__(self, dim: int = 2) -> None:
         '''
         Constructor for the class.
 
@@ -65,10 +71,11 @@ class SoinnPlus:
         self.param_c = 2
         self.param_alpha = 2
 
-        self.delete_edge_handler = self.delete_old_edges_plus
-        self.delete_noise_handler = self.delete_noise_nodes_plus
-
-    def inference(self, signal, label_clusters=True):
+        self._delete_edge_handler: Callable[[int], None] = self._delete_old_edges_plus
+        self._delete_noise_handler: Callable[[], None] = self._delete_noise_nodes_plus
+        self._label_cluster_handler: Callable[[Sequence[int]], bool] = self._label_cluster_uniformly
+        
+    def inference(self, signal: SignalLike, label_clusters: bool = True) -> Prediction:
         '''
         Inference from the trained network.
         
@@ -76,61 +83,108 @@ class SoinnPlus:
         ----------
         signal: array-like
             row vector, input signal
-        label_clusters: bool, optional (default=True)
-            whether to label the cluster of the nearest node or just return the nearest node's prediction
         
         Returns:
         prediction: tuple (mean, variance)
             None if no similar node is found.
         '''
         
-        signal = self.check_signal(signal)
         if len(self.nodes) < 3:
             raise ValueError("At least 3 nodes are required for inference, but only {} nodes are present.".format(len(self.nodes)))
+        if self.labels.count(None) == len(self.labels):
+            raise ValueError("No labels are available for inference. Please provide labels for the nodes before performing inference.")
 
-        winner, sq_dist = self.find_nearest_nodes(1, signal)
-        sim_threshold = self.calculate_similarity_threshold(winner[0]) 
-        if sq_dist[0] > sim_threshold:
-            return (None, None)
-        else:
-            if label_clusters:
-                self.label_cluster(winner[0])
-            return self.predictions[winner[0]]
+        winner_index = self.find_winner(signal)
+        cluster_nodes, _ = self._get_cluster(winner_index)
+        if label_clusters:
+            self._label_cluster_handler(cluster_nodes)
+        prediction = self.predictions[winner_index]
+
+        if prediction[0] is None:
+            prediction = self._fallback_prediction(signal)
+
+        return prediction
     
-    def calculate_density(self, node_index):
+    def batch_inference(self, signals: BatchSignals) -> BatchPredictions:
+        '''
+        Batch inference from the trained network.
+        
+        Parameters:
+        ----------
+        signals: list of array-like
+            list of row vectors, input signals
+        
+        Returns:
+        predictions: list of tuple (mean, variance)
+            None if no similar node is found.
+        '''
+        signals_array = np.asarray(signals, dtype=object if isinstance(signals, list) else None)
+        if isinstance(signals_array, np.ndarray) and signals_array.ndim == 1 and signals_array.size > 0 and not isinstance(signals_array[0], (np.ndarray, list, tuple)):
+            signals_iterable = [signals_array]
+        elif isinstance(signals_array, np.ndarray) and signals_array.ndim == 2:
+            signals_iterable = signals_array
+        else:
+            signals_iterable = signals
+
+        predictions = []
+        latch = True  # Label clusters only once for the batch
+        for signal in signals_iterable:
+            prediction = self.inference(signal, label_clusters=latch)
+            predictions.append(prediction)
+            latch = False  # Only label clusters for the first signal
+        predictions = np.array(predictions, dtype=float)
+        return predictions
+    
+    def _calculate_density(self, node_index: int) -> float:
         pals = list(self.adjacency_mat.rows[node_index])
+        if len(pals) == 0:
+            return 0.0
         node_vec = self.nodes[node_index]
         pal_vecs = np.vstack([self.nodes[i] for i in pals])
         D = np.sum(np.sqrt((pal_vecs - node_vec) ** 2), axis=1)
         density = 1 / (1 + np.mean(D))**2 if D.size > 0 else 0
         return density
-
-
     
-    def label_cluster(self, node_index, density_weighted=True):
-        cluster_nodes, _ = self.get_cluster(node_index)
+    def _label_cluster_uniformly(self, cluster_nodes: list[int], density_weighted: bool = True) -> bool:
         labeled_nodes = [i for i in cluster_nodes if self.labels[i] is not None]
+        if len(labeled_nodes) == 0:
+            return False
         cluster_labels = np.array([self.labels[i] for i in labeled_nodes])
-        if cluster_labels.size == 0:
-            return None, None
         if len(cluster_labels) == 1:
-            prediction = (cluster_labels[0], 0.0)
-        elif density_weighted:
-            densities = np.array([self.calculate_density(i) for i in labeled_nodes])
-            density_sum = densities.sum()
-            weights = densities / density_sum if density_sum > 0 else np.ones(len(densities)) / len(densities)
-            weighted_mean = np.dot(weights, cluster_labels)
-            weighted_var = np.dot(weights, (cluster_labels - weighted_mean) ** 2)
-            prediction = (weighted_mean, weighted_var)
-        else:
-            mean = np.mean(cluster_labels)
-            var = np.var(cluster_labels)
-            prediction = (mean, var)
+            prediction = cluster_labels[0]
+        densities = np.array([self._calculate_density(i) for i in labeled_nodes])
+        density_sum = densities.sum()
+        weights = densities / density_sum if density_sum > 0 else np.ones(len(densities)) / len(densities)
+        weighted_mean = np.dot(weights, cluster_labels)
+        prediction = weighted_mean
+        # weighted_var = np.dot(weights, (cluster_labels - weighted_mean) ** 2)
         for i in cluster_nodes:
-            self.predictions[i] = prediction
+            density = self._calculate_density(i)
+            self.predictions[i] = (prediction, density)
+        return True
+
+    def _label_cluster_distance_based(self, cluster_nodes: list[int], density_weighted: bool = True) -> bool:
+        labeled_nodes = [i for i in cluster_nodes if self.labels[i] is not None]
+        if len(labeled_nodes) == 0:
+            return False
+        ln_vecs = np.vstack([self.nodes[i] for i in labeled_nodes])
+        cn_vecs = np.vstack([self.nodes[i] for i in cluster_nodes])
+        closest_ln = np.argmin(np.linalg.norm(ln_vecs[:, np.newaxis] - cn_vecs, axis=2), axis=0)
+        closest_ln_idx = [labeled_nodes[i] for i in closest_ln]
+        for pos, node_index in enumerate(cluster_nodes):
+            prediction = self.labels[closest_ln_idx[pos]]
+            density = self._calculate_density(node_index)
+            self.predictions[node_index] = (prediction, density)
+        return True
+    
+    def _fallback_prediction(self, signal: SignalLike) -> Prediction:
+        valid_nodes = [i for i, p in enumerate(self.predictions) if p[0] is not None]
+        valid_vecs = np.vstack([self.nodes[i] for i in valid_nodes])
+        closest_idx = np.argmin(np.linalg.norm(valid_vecs - signal, axis=1))
+        prediction = self.predictions[valid_nodes[closest_idx]]
         return prediction
 
-    def update_label(self, node_index, label, is_winner=True):
+    def _update_label(self, node_index: int, label: float | None, is_winner: bool = True) -> None:
         # Update labels like any other dimension
         if label is None:
             return
@@ -143,7 +197,7 @@ class SoinnPlus:
         elif self.labels[node_index] is not None and self.label_times[node_index] > 0:
                 self.labels[node_index] += (label - self.labels[node_index]) / (self.pull_factor*self.label_times[node_index])
 
-    def input_signal(self, signal, label=None):
+    def input_signal(self, signal: SignalLike, label: float | None = None) -> None:
         '''
         Input a signal to the SOINN+ algorithm.
 
@@ -154,26 +208,26 @@ class SoinnPlus:
         label : optional
             label for the input signal (continous)
         '''
-        signal = self.check_signal(signal)
+        signal = self._check_signal(signal)
         self.signal_num += 1
 
         # If in initialization state add node unconditionally
         if len(self.nodes) < 3:
-            self.add_node(signal, (label, None), label)
+            self._add_node(signal, (label, None), label)
             return
         
         # Find the winners and calculate similarity threshold
-        winners, dists = self.find_nearest_nodes(2, signal)
-        sim_thresholds = self.calculate_similarity_thresholds(winners)
+        winners, dists = self._find_nearest_nodes(2, signal)
+        sim_thresholds = self._calculate_similarity_thresholds(winners)
 
         # Add node if either one of distance greater than corresponding similarity threshold
         if np.any(dists >= sim_thresholds):
-            self.add_node(signal, self.predictions[winners[0]], label)
+            self._add_node(signal, self.predictions[winners[0]], label)
 
         else:
             # NODE MERGING
-            self.update_winner(winners[0], signal, label)
-            self.update_adjacent_nodes(winners[0], signal)
+            self._update_winner(winners[0], signal, label)
+            self._update_adjacent_nodes(winners[0], signal)
             
             # NODE LINKING
             # Calculate the trust level of first winner nodes.
@@ -194,7 +248,7 @@ class SoinnPlus:
 
             # If Condition 1,2 or 3 is true add the edge or update the reset the edge lifetime if it already exists.
             if edge_flag:
-                is_new = self.add_edge(winners)
+                is_new = self._add_edge(winners)
                 if is_new:
                     self.links_created += 1
                     pre_mean = self.winner_link_sim_th_mean.copy()
@@ -202,17 +256,18 @@ class SoinnPlus:
                     self.winner_link_sim_th_mean += (np.sqrt(sim_thresholds.T) - self.winner_link_sim_th_mean) / self.links_created
                     self.winner_link_sim_th_M2 += (np.sqrt(sim_thresholds.T) - pre_mean) * (np.sqrt(sim_thresholds.T) - self.winner_link_sim_th_mean) 
 
-            self.increment_adjacent_edge_ages(winners[0])
+            self._increment_adjacent_edge_ages(winners[0])
 
             # EDGE DELETION
-            self.delete_edge_handler(winners[0])
+            self._delete_edge_handler(winners[0])
             
             # CLUSTER LABELING
             if label is not None or self.signal_num % self.manually_label_clusters_period == 0:
-                self.label_cluster(winners[0])
+                cluster_nodes, _ = self._get_cluster(winners[0])
+                self._label_cluster_handler(cluster_nodes)
 
         # NODE DELETION
-        self.delete_noise_handler()
+        self._delete_noise_handler()
         
         #TODO if signal_num becomes very large we might want to reset it.
 
@@ -220,7 +275,7 @@ class SoinnPlus:
         if not len(self.nodes) == self.adjacency_mat.shape[0] == len(self.winning_times) == len(self.idle_since):
             raise ValueError("Inconsistent SOINN state: nodes, adjacency matrix, winning times, and win nums should all have the same length.")
         
-    def show(self, save=False, save_path="tmp.png"):
+    def show(self, save: bool = False, save_path: str = "tmp.png") -> None:
         """
         Display SOINN's network in 3D: X/Y are the first two input dimensions,
         Z is the predicted label (mean) for each node. Nodes without a prediction
@@ -261,17 +316,17 @@ class SoinnPlus:
         else:
             plt.show()
 
-    def topo_err(self, data):
+    def _topo_err(self, data: np.ndarray) -> float:
         num_err = 0
         for i in range(data.shape[0]):
-            near_idx, _ = self.find_nearest_nodes(2, data[i, :])
+            near_idx, _ = self._find_nearest_nodes(2, data[i, :])
             if self.adjacency_mat[near_idx[0], near_idx[1]]:
                 num_err += 1
         
         err = num_err / data.shape[0]
         return err
 
-    def check_signal(self, signal):
+    def _check_signal(self, signal: SignalLike) -> np.ndarray:
         '''
         Check the input signal and convert into a row vector with shape (1, dimension).
 
@@ -306,7 +361,7 @@ class SoinnPlus:
         return s.reshape(1, -1)
 
     
-    def add_node(self, signal, winners_prediction, label=None):
+    def _add_node(self, signal: np.ndarray, winners_prediction: Prediction, label: float | None = None) -> None:
         '''
         Add a new node to the network.
 
@@ -337,7 +392,7 @@ class SoinnPlus:
             self.track_input.append(signal)
             self.track_input_idx.append(self.signal_num)
 
-    def find_nearest_nodes(self, num, signal):
+    def _find_nearest_nodes(self, num: int, signal: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         indices = np.zeros(num, dtype=int)
         sq_dists = np.zeros(num)
 
@@ -350,14 +405,22 @@ class SoinnPlus:
         
         return indices, sq_dists
     
-    def calculate_similarity_thresholds(self, node_indices):
+    def find_winner(self, signal: np.ndarray) -> int:
+        """
+        Find the index of the nearest neighbor node to the given signal.
+        """
+        checked_signal = self._check_signal(signal)
+        indices, _ = self._find_nearest_nodes(1, checked_signal)
+        return indices[0]
+    
+    def _calculate_similarity_thresholds(self, node_indices: Sequence[int] | np.ndarray) -> np.ndarray:
         sim_thresholds = np.zeros((len(node_indices), 1))
         for i in range(len(node_indices)):
-            sim_thresholds[i] = self.calculate_similarity_threshold(node_indices[i])
+            sim_thresholds[i] = self._calculate_similarity_threshold(node_indices[i])
 
         return sim_thresholds
     
-    def calculate_similarity_threshold(self, node_index):
+    def _calculate_similarity_threshold(self, node_index: int) -> float:
         # NOTE: This function claculates the squared similarity threshold. Fine for comparison.
         connected_indices = self.adjacency_mat.rows[node_index]
         if connected_indices != []:
@@ -366,22 +429,22 @@ class SoinnPlus:
             D = np.sum((pals - node_vec) ** 2, axis=1)
             threshold = max(D)
         else:
-            _, sq_dists = self.find_nearest_nodes(2, self.nodes[node_index])
+            _, sq_dists = self._find_nearest_nodes(2, self.nodes[node_index])
             threshold = sq_dists[1]
 
         return threshold
     
-    def add_edge(self, node_indices):
+    def _add_edge(self, node_indices: Sequence[int] | np.ndarray) -> bool:
         if self.adjacency_mat[node_indices[0], node_indices[1]] or self.adjacency_mat[node_indices[1], node_indices[0]]:
             is_new = False
         else:
             is_new = True
         # Reset edge age to 1 if edge already exists, otherwise create new edge with age 1
         # NOTE: In paper this is set to zero but we set it to one to avoid confusion with deleted edges.
-        self.set_edge_age(node_indices[0], node_indices[1], 1)
+        self._set_edge_age(node_indices[0], node_indices[1], 1)
         return is_new
     
-    def update_winner(self, winner_index, signal, label=None):
+    def _update_winner(self, winner_index: int, signal: np.ndarray, label: float | None = None) -> None:
         '''
         Update the winning node with the new signal.
         Parameters:
@@ -397,13 +460,13 @@ class SoinnPlus:
         w = self.nodes[winner_index]
         self.nodes[winner_index] = w + (signal - w) / self.winning_times[winner_index]
         self.idle_since[winner_index] = self.signal_num # Equivalent with setting the idle time to 0
-        self.update_label(winner_index, label)
+        self._update_label(winner_index, label)
 
         if self.enable_tracking:
             self.track_input[winner_index] = [self.track_input[winner_index], signal]
             self.track_input_idx[winner_index] = [self.track_input_idx[winner_index], self.signal_num]
         
-    def update_adjacent_nodes(self, winner_index, signal):
+    def _update_adjacent_nodes(self, winner_index: int, signal: np.ndarray) -> None:
         pals = list(self.adjacency_mat.rows[winner_index])
         ages = list(self.adjacency_mat.data[winner_index])
         for pal, age in zip(pals, ages):
@@ -412,18 +475,18 @@ class SoinnPlus:
 
             w = self.nodes[pal]
             self.nodes[pal] = w + (signal - w) / (self.pull_factor * self.winning_times[pal])
-            self.update_label(pal, self.labels[winner_index], is_winner=False)
+            self._update_label(pal, self.labels[winner_index], is_winner=False)
 
-    def increment_adjacent_edge_ages(self, winner_index):
+    def _increment_adjacent_edge_ages(self, winner_index: int) -> None:
         # Increment only existing edges (strictly positive entries)
         pals = list(self.adjacency_mat.rows[winner_index])
         ages = list(self.adjacency_mat.data[winner_index])
         for pal, age in zip(pals, ages):
             if pal == winner_index or age <= 0:
                 continue
-            self.set_edge_age(winner_index, pal, age + 1)
+            self._set_edge_age(winner_index, pal, age + 1)
     
-    def set_edge_age(self, i, j, age):
+    def _set_edge_age(self, i: int, j: int, age: int) -> None:
         if age == 0:
             self._remove_lil_entry(i, j)
             self._remove_lil_entry(j, i)
@@ -431,7 +494,7 @@ class SoinnPlus:
             self.adjacency_mat[i, j] = age
             self.adjacency_mat[j, i] = age
 
-    def _remove_lil_entry(self, i, j):
+    def _remove_lil_entry(self, i: int, j: int) -> None:
         row = self.adjacency_mat.rows[i]
         data = self.adjacency_mat.data[i]
         if j in row:
@@ -439,7 +502,7 @@ class SoinnPlus:
             row.pop(idx)
             data.pop(idx)
 
-    def get_cluster(self, seed):
+    def _get_cluster(self, seed: int) -> tuple[set[int], set[tuple[int, int]]]:
         n_nodes = self.adjacency_mat.shape[0]
         if seed < 0 or seed >= n_nodes:
             return set(), set()
@@ -467,7 +530,7 @@ class SoinnPlus:
                 unique_edges.add(edge)
         return visited, unique_edges
 
-    def collect_cluster_ages(self, cluster_edges):
+    def _collect_cluster_ages(self, cluster_edges: set[tuple[int, int]]) -> np.ndarray:
         edge_age = []
         for u, v in cluster_edges:
             age = self.adjacency_mat[u, v]
@@ -476,10 +539,10 @@ class SoinnPlus:
 
         return np.array(edge_age)
 
-    def delete_old_edges_plus(self, winner_index):
+    def _delete_old_edges_plus(self, winner_index: int) -> None:
         # Collect the edge ages of the winners cluster
-        cluster_nodes, cluster_edges = self.get_cluster(winner_index)
-        cluster_ages = self.collect_cluster_ages(cluster_edges)
+        cluster_nodes, cluster_edges = self._get_cluster(winner_index)
+        cluster_ages = self._collect_cluster_ages(cluster_edges)
         if cluster_ages.size == 0:
             return
         pal_ages = np.array(self.adjacency_mat.data[winner_index])
@@ -495,7 +558,7 @@ class SoinnPlus:
         indices_to_delete = pals[pal_ages > del_threshold]
         deleted_ages = pal_ages[pal_ages > del_threshold]
         for i in indices_to_delete:
-            self.set_edge_age(i, winner_index, 0)
+            self._set_edge_age(i, winner_index, 0)
 
         # Update average lifetime of deleted edges
         if indices_to_delete.size > 0:
@@ -504,7 +567,7 @@ class SoinnPlus:
 
         return
 
-    def delete_nodes(self, indices):
+    def _delete_nodes(self, indices: Sequence[int] | np.ndarray) -> None:
         indices = np.asarray(list(set(indices)))
 
         # Build keep-mask once and reuse for all structures
@@ -527,7 +590,7 @@ class SoinnPlus:
 
         self.node_count_del += len(indices)
 
-    def delete_noise_nodes_plus(self):
+    def _delete_noise_nodes_plus(self) -> None:
         degrees = self.adjacency_mat.getnnz(axis=1) # Number of connected edges per node
         noise_nodes = degrees < 1 # Nodes that are not connected to any other node
         active_nodes = ~noise_nodes
@@ -555,6 +618,6 @@ class SoinnPlus:
             self.avg_idle_del = (self.node_count_del * self.avg_idle_del + np.sum(idle_times[inactive_idx & noise_nodes], axis=0)) / (self.node_count_del + np.sum(inactive_idx & noise_nodes, axis=0))
             self.avg_unutility_del = (self.node_count_del * self.avg_unutility_del + np.sum(unutility[inactive_idx & noise_nodes], axis=0)) / (self.node_count_del + np.sum(inactive_idx & noise_nodes, axis=0))
             
-            self.delete_nodes(np.where(inactive_idx & noise_nodes)[0])
+            self._delete_nodes(np.where(inactive_idx & noise_nodes)[0])
             
 
