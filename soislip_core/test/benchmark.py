@@ -179,10 +179,10 @@ def train_soinn_learning_curve(
         soinn.input_signal(x, label=y)
         if i % eval_step == 0 or i == len(x_train):
             preds, fallback_count = predict_soinn(soinn, x_test, use_fallback)
-            metrics = et.compute_reference_metrics(preds, y_ref, sigma_ref)
+            metrics = et.EvalTools.compute_uncertainty_metrics(y_ref, preds, sigma_ref)
             for class_name in class_names:
                 m = class_masks[class_name]
-                class_metrics = et.compute_reference_metrics(preds[m], y_ref[m], sigma_ref[m])
+                class_metrics = et.EvalTools.compute_uncertainty_metrics(y_ref[m], preds[m], sigma_ref[m])
                 class_r_history[class_name].append(class_metrics["r"])
             steps.append(i)
             r_values.append(metrics["r"])
@@ -283,20 +283,23 @@ def main() -> None:
         for class_name, r_curve in curve_r_by_class.items():
             print(f"Learning curve final R for class '{class_name}': {r_curve[-1]:.6f} at step {int(curve_steps[-1])}")
 
-    abstention = et.EvalTools.abstention_metrics()
-    metrics = et.compute_reference_metrics(et.EvalTools.y_pred, y_ref, sigma_ref)
-    et.print_reference_metrics(
-        "Grid benchmark",
-        metrics,
-        abstention,
-        aux_count=soinn_model.fallback_count,
-        aux_label="fallback predictions used",
-    )
-
+    # abstention = et.EvalTools.abstention_metrics()
+    regression_metrics = et.EvalTools.regression_metrics()
+    uncertainty_metrics = et.EvalTools.compute_uncertainty_metrics(y_ref, et.EvalTools.y_pred, sigma_ref)
     avg_gp_sigma = float(np.nanmean(sigma_ref))
+
+    combined_metrics = {
+        **regression_metrics,
+        **uncertainty_metrics,
+        # **abstention,
+        "fallback_predictions_used": float(soinn_model.fallback_count),
+        "avg_gp_sigma": avg_gp_sigma,
+    }
+
+    et.EvalTools.print_metrics("Grid benchmark", combined_metrics)
     print(f"Average GP sigma: {avg_gp_sigma:.6f}")
 
-    et.plot_learning_curve_comparison(
+    et.EvalTools.plot_learning_curve_comparison(
         curve_steps,
         overall_r=curve_r,
         class_r_curves=curve_r_by_class,
@@ -305,7 +308,7 @@ def main() -> None:
         enabled=args.plot_curve,
     )
 
-    et.save_class_grid_plots(
+    et.EvalTools.save_class_grid_plots(
         run_stamp=run_stamp,
         positions=positions,
         class_labels=class_test,
@@ -316,20 +319,15 @@ def main() -> None:
         cost_sigma=dl.COST_SIGMA,
     )
 
-    et.save_metrics_csv(
+    et.EvalTools.save_metrics_csv(
         output_path=metrics_output_path,
-        metrics=metrics,
-        abstention=abstention,
-        fallback_count=soinn_model.fallback_count,
-        avg_gp_sigma=avg_gp_sigma,
-        curve_step=args.curve_step,
-        curve_steps=curve_steps,
+        metrics=combined_metrics,
+        class_r_curves=curve_r_by_class,
         curve_r=curve_r,
-        curve_fallback=curve_fallback,
     )
 
     if args.plot and soinn_curve.nodes:
-        et.plot_network(soinn_curve, True)
+        et.EvalTools.plot_network(soinn_curve, True)
 
 
 if __name__ == "__main__":

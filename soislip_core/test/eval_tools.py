@@ -7,6 +7,9 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 
+COST_MU = 0.02
+COST_SIGMA = 0.01
+
 
 class EvalModelBase:
     """Model placeholder to be overridden by user implementations."""
@@ -76,8 +79,8 @@ class EvalTools:
     @staticmethod
     def compute_regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
         valid_mask = np.isfinite(y_true) & np.isfinite(y_pred)
-        valid_true = y_true[valid_mask]
-        valid_pred = y_pred[valid_mask]
+        valid_true = EvalTools.denormalize_labels(y_true[valid_mask], COST_MU, COST_SIGMA)
+        valid_pred = EvalTools.denormalize_labels(y_pred[valid_mask], COST_MU, COST_SIGMA)
 
         if valid_true.size == 0:
             return {
@@ -103,7 +106,7 @@ class EvalTools:
         ss_tot = float(np.sum((valid_true - np.mean(valid_true)) ** 2))
         r2 = float(1.0 - ss_res / ss_tot) if ss_tot > 0.0 else float("nan")
 
-        r2_fixed = float(1.0 - mse) # assuming normalized labels with variance 1.0
+        r2_fixed = float(1.0 - ss_res / (valid_true.size * COST_SIGMA ** 2)) if valid_true.size > 0 else float("nan")
         medae = float(np.median(np.abs(errors)))
         rmse_mae_ratio = float(rmse / mae) if mae > 0.0 else float("nan")
 
@@ -161,90 +164,34 @@ class EvalTools:
         if valid_true.size == 0:
             return {
                 "r": float("nan"),
-                "pinaw": float("nan"),
-                "pinaw_fixed": float("nan"),
                 "z_mean": float("nan"),
                 "z_std": float("nan"),
-                "avg_sigma": float("nan"),
             }
 
         errors = valid_pred - valid_true
         y_range = float(np.max(valid_true) - np.min(valid_true))
         r = float(np.mean(np.abs(errors) <= 2.0 * valid_sigma))
-        pinaw = float(np.mean(4.0 * valid_sigma) / y_range) if y_range > 0.0 else float("nan")
-        pinaw_fixed = float(np.mean(4.0 * valid_sigma))
-        z_scores = errors / valid_sigma
+        pull = errors / valid_sigma
 
         return {
             "r": r,
-            "pinaw": pinaw,
-            "pinaw_fixed": pinaw_fixed,
-            "z_mean": float(np.mean(z_scores)),
-            "z_std": float(np.std(z_scores)),
-            "avg_sigma": float(np.mean(valid_sigma)),
+            "pull_mean": float(np.mean(pull)),
+            "pull_std": float(np.std(pull)),
         }
+    
+    def uncertainty_metrics(cls, sigma: np.ndarray) -> dict[str, float]:
+        if cls.y_test is None or cls.y_pred is None:
+            raise ValueError("y_test and y_pred must be set before computing uncertainty metrics")
+        return cls.compute_uncertainty_metrics(cls.y_test, cls.y_pred, sigma)
 
     @staticmethod
-    def compute_reference_metrics(
-        y_pred: np.ndarray,
-        mu_ref: np.ndarray,
-        sigma_ref: np.ndarray,
-    ) -> dict[str, float]:
-        regression = EvalTools.compute_regression_metrics(mu_ref, y_pred)
-        uncertainty = EvalTools.compute_uncertainty_metrics(mu_ref, y_pred, sigma_ref)
-        return {
-            **regression,
-            "r": uncertainty["r"],
-            "pinaw": uncertainty["pinaw"],
-            "pinaw_fixed": uncertainty["pinaw_fixed"],
-            "z_mean": uncertainty["z_mean"],
-            "z_std": uncertainty["z_std"],
-        }
-
-    @staticmethod
-    def print_basic_metrics(
+    def print_metrics(
         split_name: str,
         metrics: dict[str, float],
-        abstention: dict[str, float],
-        aux_count: int,
-        aux_label: str,
     ) -> None:
         print(f"{split_name} metrics:")
-        print(
-            "  samples: "
-            f"{int(abstention['total_samples'])}, "
-            f"confident: {int(abstention['confident_samples'])}, "
-            f"abstained: {int(abstention['abstained_samples'])}, "
-            f"coverage: {abstention['coverage']:.6f}, "
-            f"abstain_rate: {abstention['abstain_rate']:.6f}"
-        )
-        print(f"  {aux_label}: {aux_count}")
-        print(f"  used for regression metrics: {int(metrics['used_samples'])}")
-        print(f"  RMSE:  {metrics['rmse']:.6f}")
-        print(f"  MAE:   {metrics['mae']:.6f}")
-        print(f"  NRMSE: {metrics['nrmse']:.6f}")
-        print(f"  R2:    {metrics['r2']:.6f}")
-        print(f"  R2 (fixed): {metrics['r2_fixed']:.6f}")
-        print(f"  MedAE: {metrics['medae']:.6f}")
-        print(f"  RMSE/MAE: {metrics['rmse_mae_ratio']:.6f}")
-
-    @staticmethod
-    def print_reference_metrics(
-        split_name: str,
-        metrics: dict[str, float],
-        abstention: dict[str, float],
-        aux_count: int,
-        aux_label: str,
-        avg_sigma: float | None = None,
-    ) -> None:
-        EvalTools.print_basic_metrics(split_name, metrics, abstention, aux_count, aux_label)
-        print(f"  R:     {metrics['r']:.6f}")
-        print(f"  PINAW: {metrics['pinaw']:.6f}")
-        print(f"  PINAW (fixed): {metrics['pinaw_fixed']:.6f}")
-        print(f"  Z-Score Mean: {metrics['z_mean']:.6f}")
-        print(f"  Z-Score Std:  {metrics['z_std']:.6f}")
-        if avg_sigma is not None:
-            print(f"  Average GP sigma: {avg_sigma:.6f}")
+        for key, value in metrics.items():
+            print(f"{key} & {value:.6f} \\\\")
 
     @staticmethod
     def plot_network(soinn: Any, enabled: bool) -> None:
@@ -460,13 +407,8 @@ class EvalTools:
     def save_metrics_csv(
         output_path: Path,
         metrics: dict[str, float],
-        abstention: dict[str, float],
-        fallback_count: int,
-        avg_gp_sigma: float,
-        curve_step: int,
-        curve_steps: np.ndarray,
+        class_r_curves: dict[str, np.ndarray],
         curve_r: np.ndarray,
-        curve_fallback: np.ndarray,
     ) -> None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -474,174 +416,12 @@ class EvalTools:
 
         with output_path.open("w", newline="") as csv_file:
             writer = csv.writer(csv_file)
-            writer.writerow([
-                "rmse",
-                "mae",
-                "nrmse",
-                "r2",
-                "r",
-                "r2_fixed",
-                "medae",
-                "rmse_mae_ratio",
-                "pinaw",
-                "pinaw_fixed",
-                "z_mean",
-                "z_std",
-                "used_samples",
-                "total_samples",
-                "confident_samples",
-                "abstained_samples",
-                "coverage",
-                "abstain_rate",
-                "fallback_predictions",
-                "average_gp_sigma",
-                "curve_step",
-                "num_curve_points",
-                "final_curve_r",
-            ])
-            writer.writerow([
-                f"{metrics['rmse']:.10g}",
-                f"{metrics['mae']:.10g}",
-                f"{metrics['nrmse']:.10g}",
-                f"{metrics['r2']:.10g}",
-                f"{metrics['r']:.10g}",
-                f"{metrics['r2_fixed']:.10g}",
-                f"{metrics['medae']:.10g}",
-                f"{metrics['rmse_mae_ratio']:.10g}",
-                f"{metrics['pinaw']:.10g}",
-                f"{metrics['pinaw_fixed']:.10g}",
-                f"{metrics['z_mean']:.10g}",
-                f"{metrics['z_std']:.10g}",
-                int(metrics["used_samples"]),
-                int(abstention["total_samples"]),
-                int(abstention["confident_samples"]),
-                int(abstention["abstained_samples"]),
-                f"{abstention['coverage']:.10g}",
-                f"{abstention['abstain_rate']:.10g}",
-                fallback_count,
-                f"{avg_gp_sigma:.10g}",
-                curve_step,
-                int(curve_steps.size),
-                f"{final_curve_r:.10g}",
-            ])
-
-            writer.writerow([])
-            writer.writerow(["learning_step", "r", "fallback_predictions"])
-            for step, r_value, fallback_value in zip(curve_steps, curve_r, curve_fallback):
-                writer.writerow([int(step), f"{float(r_value):.10g}", int(fallback_value)])
+            writer.writerow(["metric", "value"])
+            for key, value in metrics.items():
+                writer.writerow([key, f"{value:.6f}"])
+            for key, value in class_r_curves.items():
+                final_value = float(value[-1]) if value.size > 0 else float("nan")
+                writer.writerow([f"{key}_r", f"{final_value:.6f}"])
+            writer.writerow(["merged_r", f"{final_curve_r:.6f}"])
 
         print(f"Saved metrics CSV to {output_path}")
-
-
-# Backward-compatible wrappers for existing scripts.
-def denormalize_labels(labels: np.ndarray, cost_mu: float, cost_sigma: float) -> np.ndarray:
-    return EvalTools.denormalize_labels(labels, cost_mu, cost_sigma)
-
-
-def compute_regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
-    return EvalTools.compute_regression_metrics(y_true, y_pred)
-
-
-def compute_abstention_metrics(y_pred: np.ndarray) -> dict[str, float]:
-    return EvalTools.compute_abstention_metrics(y_pred)
-
-
-def compute_uncertainty_metrics(y_true: np.ndarray, y_pred: np.ndarray, sigma: np.ndarray) -> dict[str, float]:
-    return EvalTools.compute_uncertainty_metrics(y_true, y_pred, sigma)
-
-
-def compute_reference_metrics(y_pred: np.ndarray, mu_ref: np.ndarray, sigma_ref: np.ndarray) -> dict[str, float]:
-    return EvalTools.compute_reference_metrics(y_pred, mu_ref, sigma_ref)
-
-
-def print_basic_metrics(
-    split_name: str,
-    metrics: dict[str, float],
-    abstention: dict[str, float],
-    aux_count: int,
-    aux_label: str,
-) -> None:
-    EvalTools.print_basic_metrics(split_name, metrics, abstention, aux_count, aux_label)
-
-
-def print_reference_metrics(
-    split_name: str,
-    metrics: dict[str, float],
-    abstention: dict[str, float],
-    aux_count: int,
-    aux_label: str,
-    avg_sigma: float | None = None,
-) -> None:
-    EvalTools.print_reference_metrics(split_name, metrics, abstention, aux_count, aux_label, avg_sigma)
-
-
-def plot_network(soinn: Any, enabled: bool) -> None:
-    EvalTools.plot_network(soinn, enabled)
-
-
-def plot_learning_curve(
-    steps: np.ndarray,
-    r_values: np.ndarray,
-    sections: list[tuple[int, str]],
-    enabled: bool,
-    output_path: Path | None,
-    title: str = "SOINN+ Learning Curve",
-) -> None:
-    EvalTools.plot_learning_curve(steps, r_values, sections, enabled, output_path, title)
-
-
-def plot_learning_curve_comparison(
-    steps: np.ndarray,
-    overall_r: np.ndarray,
-    class_r_curves: dict[str, np.ndarray],
-    output_path: Path,
-    sections: list[tuple[int, str]],
-    enabled: bool,
-) -> None:
-    EvalTools.plot_learning_curve_comparison(steps, overall_r, class_r_curves, output_path, sections, enabled)
-
-
-def save_class_grid_plots(
-    run_stamp: str,
-    positions: np.ndarray,
-    class_labels: np.ndarray,
-    gp_predictions: np.ndarray,
-    soinn_predictions: np.ndarray,
-    output_dir: Path,
-    cost_mu: float,
-    cost_sigma: float,
-) -> None:
-    EvalTools.save_class_grid_plots(
-        run_stamp,
-        positions,
-        class_labels,
-        gp_predictions,
-        soinn_predictions,
-        output_dir,
-        cost_mu,
-        cost_sigma,
-    )
-
-
-def save_metrics_csv(
-    output_path: Path,
-    metrics: dict[str, float],
-    abstention: dict[str, float],
-    fallback_count: int,
-    avg_gp_sigma: float,
-    curve_step: int,
-    curve_steps: np.ndarray,
-    curve_r: np.ndarray,
-    curve_fallback: np.ndarray,
-) -> None:
-    EvalTools.save_metrics_csv(
-        output_path,
-        metrics,
-        abstention,
-        fallback_count,
-        avg_gp_sigma,
-        curve_step,
-        curve_steps,
-        curve_r,
-        curve_fallback,
-    )

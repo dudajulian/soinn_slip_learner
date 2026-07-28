@@ -34,6 +34,9 @@ def normalize_features(features: np.ndarray) -> np.ndarray:
 def normalize_labels(labels: np.ndarray) -> np.ndarray:
     return (labels - COST_MU) / COST_SIGMA
 
+def denormalize_labels(labels: np.ndarray) -> np.ndarray:
+    return (labels * COST_SIGMA) + COST_MU
+
 
 def _load_trail_file(trail_path: Path) -> tuple[np.ndarray, np.ndarray]:
     rows: list[list[float]] = []
@@ -228,15 +231,27 @@ def load_grid_details(
 def main() -> None:
     try:
         trail_data = load_trail_data(TRAIL_DATA_DIRECTORY)
+        print(f"Loaded trail data from {TRAIL_DATA_DIRECTORY}")
         for class_name, (features, labels) in trail_data.items():
-            print(f"Class: {class_name}, {features.shape}, {labels.shape}")
+            denormalized_labels = denormalize_labels(labels)
+            print(f"{class_name} & {features.shape[0]} & ({np.mean(denormalized_labels):.5f}, {np.std(denormalized_labels):.5f}) \\\\")
+
+        all_labels = np.concatenate([labels for _, labels in trail_data.values()])
+        denormalized_labels = denormalize_labels(all_labels)
+        print("\\midrule")
+        print(f"merged & {all_labels.shape[0]} & ({np.mean(denormalized_labels):.5f}, {np.std(denormalized_labels):.5f}) \\\\")
     except FileNotFoundError as e:
         print(e)
 
     try:
         grid_data = load_grid_data(GRID_DATA_DIRECTORY)
+        feature_len = 0
+        print(f"Loaded grid data from {GRID_DATA_DIRECTORY}")
         for class_name, (features, positions) in grid_data.items():
-            print(f"Class: {class_name}, {features.shape}, {positions.shape}")
+            print(f"{class_name} & {features.shape[0]} \\\\")
+            feature_len += features.shape[0]
+        print("\\midrule")
+        print(f"merged & {feature_len} \\\\")
     except FileNotFoundError as e:
         print(e)
 

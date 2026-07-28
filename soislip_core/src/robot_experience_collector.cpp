@@ -37,8 +37,8 @@ public:
     this->declare_parameter("robot_frame", "base_link");
     this->declare_parameter("wheel_odom", "odom");
     this->declare_parameter("reference_odom", "map");
-    this->declare_parameter("wheel_odom_source", "frame");
-    this->declare_parameter("reference_odom_source", "frame");
+    this->declare_parameter("wheel_odom_source", "topic");
+    this->declare_parameter("reference_odom_source", "topic");
     this->declare_parameter("sample_distance", 0.3);
     this->declare_parameter("min_distance_threshold", 0.05);
     this->declare_parameter("min_velocity_threshold", 0.05);
@@ -181,22 +181,22 @@ private:
       return OdomSourceType::Topic;
     }
 
-    RCLCPP_WARN(
+    RCLCPP_ERROR(
       this->get_logger(),
-      "Unknown value '%s' for parameter '%s'. Expected 'frame' or 'topic'. Falling back to 'frame'.",
+      "Unknown value '%s' for parameter '%s'. Expected 'frame' or 'topic'.",
       value.c_str(), parameter_name.c_str());
-    return OdomSourceType::Frame;
+    throw std::invalid_argument("Unknown odometry source type: " + value);
   }
 
   void initialize_odometry_subscribers() {
-    if (wheel_odom_config_.configured_type != OdomSourceType::Frame) {
+    if (wheel_odom_config_.configured_type == OdomSourceType::Topic) {
       wheel_odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
         wheel_odom_config_.name,
         10,
         std::bind(&RobotExperienceCollectorNode::wheel_odom_callback, this, std::placeholders::_1));
     }
 
-    if (reference_odom_config_.configured_type != OdomSourceType::Frame) {
+    if (reference_odom_config_.configured_type == OdomSourceType::Topic) {
       reference_odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
         reference_odom_config_.name,
         10,

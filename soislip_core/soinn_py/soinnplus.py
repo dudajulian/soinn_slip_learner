@@ -48,10 +48,10 @@ class SoinnPlus:
         self.winner_link_sim_th_M2 = np.zeros((1,2))
         self.winner_link_sim_th_mean = np.zeros((1,2))
         self.nodes = [] # List of node weight vectors (row vectors with shape (1, dimension))
-        self.winning_times = [] # List of winning times for each node (number of times each node has won)
+        self.winning_count = [] # List of winning times for each node (number of times each node has won)
         self.idle_since = [] # List of signal timestamps the node has been idle since (node has not won since this signal number)
         self.labels = [] # List of labels for each node
-        self.label_times = [] # List of label update times for each node (number of times each node's label has been updated)
+        self.label_count = [] # List of label update times for each node (number of times each node's label has been updated)
         self.predictions = [] # List of label predictions for each node (tuple of (mean, variance))
         self.adjacency_mat = lil_matrix((0,0), dtype=int) # Track edges and edge ages. (0 = no edge, value-1 = age)
         self.track_input = []
@@ -73,7 +73,7 @@ class SoinnPlus:
 
         self._delete_edge_handler: Callable[[int], None] = self._delete_old_edges_plus
         self._delete_noise_handler: Callable[[], None] = self._delete_noise_nodes_plus
-        self._label_cluster_handler: Callable[[Sequence[int]], bool] = self._label_cluster_uniformly
+        self._label_cluster_handler: Callable[[Sequence[int]], bool] = self._label_cluster_median
         
     def inference(self, signal: SignalLike, label_clusters: bool = True) -> Prediction:
         '''
@@ -145,19 +145,41 @@ class SoinnPlus:
         density = 1 / (1 + np.mean(D))**2 if D.size > 0 else 0
         return density
     
-    def _label_cluster_uniformly(self, cluster_nodes: list[int], density_weighted: bool = True) -> bool:
+    def _label_cluster_mean(self, cluster_nodes: list[int], density_weighted: bool = True) -> bool:
         labeled_nodes = [i for i in cluster_nodes if self.labels[i] is not None]
         if len(labeled_nodes) == 0:
             return False
         cluster_labels = np.array([self.labels[i] for i in labeled_nodes])
         if len(cluster_labels) == 1:
             prediction = cluster_labels[0]
-        densities = np.array([self._calculate_density(i) for i in labeled_nodes])
-        density_sum = densities.sum()
-        weights = densities / density_sum if density_sum > 0 else np.ones(len(densities)) / len(densities)
-        weighted_mean = np.dot(weights, cluster_labels)
-        prediction = weighted_mean
+        else:
+            densities = np.array([self._calculate_density(i) for i in labeled_nodes])
+            density_sum = densities.sum()
+            weights = densities / density_sum if density_sum > 0 else np.ones(len(densities)) / len(densities)
+            weighted_mean = np.dot(weights, cluster_labels)
+            prediction = weighted_mean
         # weighted_var = np.dot(weights, (cluster_labels - weighted_mean) ** 2)
+        for i in cluster_nodes:
+            density = self._calculate_density(i)
+            self.predictions[i] = (prediction, density)
+        return True
+    
+    def _label_cluster_median(self, cluster_nodes: list[int], density_weighted: bool = True) -> bool:
+        labeled_nodes = [i for i in cluster_nodes if self.labels[i] is not None]
+        if len(labeled_nodes) == 0:
+            return False
+        cluster_labels = np.array([self.labels[i] for i in labeled_nodes])
+        if len(cluster_labels) == 1:
+            prediction = cluster_labels[0]
+        else:
+            densities = np.array([self._calculate_density(i) for i in labeled_nodes])
+            density_sum = densities.sum()
+            weights = densities / density_sum if density_sum > 0 else np.ones(len(densities)) / len(densities)
+            sort_idx = np.argsort(cluster_labels)
+            sorted_labels = cluster_labels[sort_idx]
+            sorted_weights = weights[sort_idx]
+            cumulative_weights = np.cumsum(sorted_weights)
+            prediction = sorted_labels[np.searchsorted(cumulative_weights, 0.5, side='left')]
         for i in cluster_nodes:
             density = self._calculate_density(i)
             self.predictions[i] = (prediction, density)
@@ -189,13 +211,13 @@ class SoinnPlus:
         if label is None:
             return
         if is_winner:
-            self.label_times[node_index] += 1
+            self.label_count[node_index] += 1
             if self.labels[node_index] is None: 
                 self.labels[node_index] = label
             else:
-                self.labels[node_index] += (label - self.labels[node_index]) / (self.label_times[node_index])
-        elif self.labels[node_index] is not None and self.label_times[node_index] > 0:
-                self.labels[node_index] += (label - self.labels[node_index]) / (self.pull_factor*self.label_times[node_index])
+                self.labels[node_index] += (label - self.labels[node_index]) / (self.label_count[node_index])
+        elif self.labels[node_index] is not None and self.label_count[node_index] > 0:
+                self.labels[node_index] += (label - self.labels[node_index]) / (self.pull_factor*self.label_count[node_index])
 
     def input_signal(self, signal: SignalLike, label: float | None = None) -> None:
         '''
@@ -231,8 +253,8 @@ class SoinnPlus:
             
             # NODE LINKING
             # Calculate the trust level of first winner nodes.
-            winning_times_nparray = np.array(self.winning_times)
-            trustworthiness = (winning_times_nparray[winners] - 1) / (np.max(winning_times_nparray) - 1)
+            winning_count_nparray = np.array(self.winning_count)
+            trustworthiness = (winning_count_nparray[winners] - 1) / (np.max(winning_count_nparray) - 1)
         
             # Condition 1: less than 3 edges in the network
             # Each undirected edge is stored as 2 entries (symmetric), so 3 edges = nnz of 6.
@@ -272,7 +294,7 @@ class SoinnPlus:
         #TODO if signal_num becomes very large we might want to reset it.
 
         #SANITY CHECK
-        if not len(self.nodes) == self.adjacency_mat.shape[0] == len(self.winning_times) == len(self.idle_since):
+        if not len(self.nodes) == self.adjacency_mat.shape[0] == len(self.winning_count) == len(self.idle_since):
             raise ValueError("Inconsistent SOINN state: nodes, adjacency matrix, winning times, and win nums should all have the same length.")
         
     def show(self, save: bool = False, save_path: str = "tmp.png") -> None:
@@ -374,13 +396,13 @@ class SoinnPlus:
         '''
         num = len(self.nodes)
         self.nodes.append(signal)
-        self.winning_times.append(1)
+        self.winning_count.append(1)
         self.idle_since.append(self.signal_num)
         self.labels.append(label)
         if label is not None:
-            self.label_times.append(1)
+            self.label_count.append(1)
         else:
-            self.label_times.append(0)
+            self.label_count.append(0)
         self.predictions.append(winners_prediction)
 
         if num == 0:
@@ -456,9 +478,9 @@ class SoinnPlus:
         label : optional
             Label for the winning node.
         '''
-        self.winning_times[winner_index] += 1
+        self.winning_count[winner_index] += 1
         w = self.nodes[winner_index]
-        self.nodes[winner_index] = w + (signal - w) / self.winning_times[winner_index]
+        self.nodes[winner_index] = w + (signal - w) / self.winning_count[winner_index]
         self.idle_since[winner_index] = self.signal_num # Equivalent with setting the idle time to 0
         self._update_label(winner_index, label)
 
@@ -474,7 +496,7 @@ class SoinnPlus:
                 continue
 
             w = self.nodes[pal]
-            self.nodes[pal] = w + (signal - w) / (self.pull_factor * self.winning_times[pal])
+            self.nodes[pal] = w + (signal - w) / (self.pull_factor * self.winning_count[pal])
             self._update_label(pal, self.labels[winner_index], is_winner=False)
 
     def _increment_adjacent_edge_ages(self, winner_index: int) -> None:
@@ -575,7 +597,7 @@ class SoinnPlus:
         mask[indices] = False
 
         self.nodes = [n for i, n in enumerate(self.nodes) if mask[i]]
-        self.winning_times = [t for i, t in enumerate(self.winning_times) if mask[i]]
+        self.winning_count = [t for i, t in enumerate(self.winning_count) if mask[i]]
         self.idle_since = [n for i, n in enumerate(self.idle_since) if mask[i]]
         self.labels = [l for i, l in enumerate(self.labels) if mask[i]]
         self.predictions = [p for i, p in enumerate(self.predictions) if mask[i]]
@@ -599,8 +621,8 @@ class SoinnPlus:
 
         win_nums_nparray = np.array(self.idle_since)
         idle_times = self.signal_num - win_nums_nparray
-        winning_times = np.array(self.winning_times, dtype=float)
-        unutility = idle_times / winning_times
+        winning_count = np.array(self.winning_count, dtype=float)
+        unutility = idle_times / winning_count
 
         active_unutility = unutility[active_nodes]
         outlierness = np.median(active_unutility) + 2*median_abs_deviation(active_unutility, scale='normal')

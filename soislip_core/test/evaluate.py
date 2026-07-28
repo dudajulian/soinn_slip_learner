@@ -285,17 +285,11 @@ def main() -> None:
         et.EvalTools.class_test = class_split
         et.EvalTools.y_pred = et.EvalTools.predict_model()
 
-        abstention = et.EvalTools.abstention_metrics()
-        metrics = et.EvalTools.regression_metrics()
-        aux_count = model.fallback_count if isinstance(model, SoinnEvalModel) else model.missing_class_count
-        aux_label = "fallback predictions used" if isinstance(model, SoinnEvalModel) else "missing-class predictions"
-        et.EvalTools.print_basic_metrics(
-            split_name,
-            metrics,
-            abstention,
-            aux_count=aux_count,
-            aux_label=aux_label,
-        )
+        regression_metrics = et.EvalTools.regression_metrics()
+        combined_metrics = {
+            **regression_metrics,
+        }
+        et.EvalTools.print_metrics(split_name, combined_metrics)
 
     if isinstance(model, SoinnEvalModel) and model.soinn is not None:
         et.EvalTools.plot_network(model.soinn, args.plot)
