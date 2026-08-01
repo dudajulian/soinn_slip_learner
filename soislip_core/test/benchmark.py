@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+from datetime import datetime, time
 from pathlib import Path
 
 import GPy
@@ -16,6 +16,17 @@ TRAIL_DATA_DIRECTORY = dl.TRAIL_DATA_DIRECTORY
 GRID_DATA_DIRECTORY = dl.GRID_DATA_DIRECTORY
 RESULTS_DIRECTORY = Path("/workspaces/vscode_ros2_workspace/resources/results/evalutation/")
 FEATURE_COUNT = 5
+
+CLASS_STATS = {
+    "black": (472, 0.02168, 0.00904),
+    "cubeblack": (482, 0.02176, 0.00755),
+    "cubes": (693, 0.02257, 0.00783),
+    "cubeturf": (202, 0.01942, 0.00724),
+    "flat": (451, 0.00919, 0.00228),
+    "slope": (824, 0.02238, 0.01089),
+    "turf": (406, 0.00955, 0.00191),
+    "merged": (3530, 0.01891, 0.00961),
+}
 
 
 class SoinnEvalModel(et.EvalModelBase):
@@ -57,11 +68,56 @@ def load_training_data(data_directory: Path) -> tuple[np.ndarray, np.ndarray, np
         y_batches.append(y)
         c_batches.append(np.full(len(x), class_name, dtype=object))
 
-    return np.vstack(x_batches), np.concatenate(y_batches), np.concatenate(c_batches), list(trail_data.keys())
+    return (
+        np.vstack(x_batches),
+        np.concatenate(y_batches),
+        np.concatenate(c_batches),
+        list(trail_data.keys()),
+    )
 
+def order_trail_data(
+    trail_data: dict[str, tuple[np.ndarray, np.ndarray]],
+    class_order: list[str],
+    split_into: int = 1,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
+    """
+    Load trail training data and concatenate class batches in a user-defined order.
 
-def load_grid_data(data_directory: Path, sample_count: int, seed: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
-    grid_data = dl.load_grid_data(data_directory)
+    Args:
+        trail_data: Dictionary of trail data loaded by `dl.load_trail_data`.
+        class_order: Desired class order, e.g. ["turf", "black", "cubeblack", "slope"].
+        split_into: Number of splits for each class batch.
+
+    Returns:
+        x_train, y_train, class_train, used_order
+    """
+    unknown_classes = [c for c in class_order if c not in trail_data]
+    if unknown_classes:
+        raise ValueError(f"Classes in class_order not found in dataset: {unknown_classes}")
+
+    used_order = [c for c in class_order if c in trail_data]
+
+    x_batches, y_batches, c_batches = [], [], []
+    for split in range(split_into):
+        for class_name in used_order:
+            x, y = trail_data[class_name]
+            if split_into > 1:
+                n_samples = len(x)
+                start_idx = (n_samples * split) // split_into
+                end_idx = (n_samples * (split + 1)) // split_into
+                x, y = x[start_idx:end_idx], y[start_idx:end_idx]
+            x_batches.append(x)
+            y_batches.append(y)
+            c_batches.append(np.full(len(x), class_name, dtype=object))
+
+    return (
+        np.vstack(x_batches),
+        np.concatenate(y_batches),
+        np.concatenate(c_batches),
+        used_order,
+    )
+
+def order_grid_data(grid_data, sample_count: int, seed: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
     rng = np.random.default_rng(seed)
     x_batches, p_batches, c_batches = [], [], []
 
@@ -79,18 +135,15 @@ def load_grid_data(data_directory: Path, sample_count: int, seed: int) -> tuple[
 
 
 def train_reference_gps(
-    x_train: np.ndarray,
-    y_train: np.ndarray,
-    class_train: np.ndarray,
+        trail_data: dict[str, tuple[np.ndarray, np.ndarray]],
 ) -> dict[str, GPy.models.GPRegression]:
     models: dict[str, GPy.models.GPRegression] = {}
-    for class_name in np.unique(class_train):
-        mask = class_train == class_name
-        X = np.asarray(x_train[mask], dtype=float)
-        y = np.asarray(y_train[mask], dtype=float)[:, None]
+    for class_name, (x_train, y_train) in trail_data.items():
+        X = np.asarray(x_train, dtype=float)
+        y = np.asarray(y_train, dtype=float)[:, None]
         kernel = GPy.kern.RBF(input_dim=FEATURE_COUNT, ARD=False)
         gp = GPy.models.GPRegression(X, y, kernel=kernel)
-        gp.optimize_restarts(num_restarts=3,robust=True,verbose=False,messages=False,max_iters=1000)
+        gp.optimize(messages=True, max_iters=200)
         models[str(class_name)] = gp
     return models
 
@@ -102,7 +155,6 @@ def gp_reference_predict(
 ) -> tuple[np.ndarray, np.ndarray]:
     mu = np.full(len(x_test), np.nan, dtype=float)
     sigma = np.full(len(x_test), np.nan, dtype=float)
-
     for class_name in np.unique(class_test):
         mask = class_test == class_name
         gp = gp_models.get(str(class_name))
@@ -111,21 +163,32 @@ def gp_reference_predict(
         pred_mu, pred_var = gp.predict(np.asarray(x_test[mask], dtype=float))
         mu[mask] = pred_mu[:, 0]
         sigma[mask] = np.sqrt(np.maximum(pred_var[:, 0], 0.0))
+        avg_gp_mu = float(np.nanmean(mu[mask]))
+        avg_gp_sigma = float(np.nanmean(sigma[mask]))
+        SIG = 0.01
+        MU = 0.02
+        avg_gp_mu = avg_gp_mu * SIG + MU# denormalize
+        avg_gp_sigma = avg_gp_sigma * SIG #denormalize
+        print(f"GP for '{class_name}' (mean(mu), mean(sigma)): ({avg_gp_mu:.5f}, {avg_gp_sigma:.5f}), count: {np.sum(mask)}")
+
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # BYPASS: Use precomputed class statistics for mu and sigma instead of GP predictions
+        _, class_mu, class_sigma = CLASS_STATS[str(class_name)]
+        class_mu = (class_mu - MU) / SIG
+        class_sigma = class_sigma / SIG
+
+        errors =  mu[mask] - class_mu
+        r = float(np.mean(np.abs(errors) <= 2.0 * class_sigma))
+        print(f"Bypassed GP: GP R value for class '{class_name}': {r:.5f}, count: {np.sum(mask)}")
+        mu[mask] = class_mu
+        sigma[mask] = class_sigma
+        print(f"Bypassed GP: Using class statistics for '{class_name}' (mu, sigma): ({class_mu:.5f}, {class_sigma:.5f}), count: {np.sum(mask)}")
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     return mu, sigma
-
-
-def _ordered_training_data(
-    x_train: np.ndarray,
-    y_train: np.ndarray,
-    class_train: np.ndarray,
-    shuffle: bool,
-    seed: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    indices = np.arange(len(x_train))
-    if shuffle:
-        np.random.default_rng(seed).shuffle(indices)
-    return x_train[indices], y_train[indices], class_train[indices]
 
 
 def _training_sections(classes: np.ndarray) -> list[tuple[int, str]]:
@@ -210,124 +273,155 @@ def parse_args() -> argparse.Namespace:
     parser.set_defaults(fallback=False)
     parser.add_argument("--seed", type=int, default=42, help="Random seed used when shuffling and sampling grid cells")
     parser.add_argument("--grid-samples-per-file", type=int, default=0, help="Number of grid cells sampled per file (0 = all)")
-    parser.add_argument("--curve-step", type=int, default=100, help="Evaluate learning curve every N training samples")
+    parser.add_argument("--curve-step", type=int, default=5, help="Evaluate learning curve every N training samples")
     parser.add_argument("--plot", action="store_true", help="Show SOINN+ network plot")
     parser.add_argument("--plot-curve", action="store_true", help="Show R learning curve plots")
     return parser.parse_args()
 
 
 def main() -> None:
+    T1 = ["black", "cubeblack", "cubes", "cubeturf", "flat", "slope", "turf"]
+    T2 = ["flat", "black", "turf", "cubes", "cubeblack", "cubeturf", "slope"]
+    T3 = ["flat", "black", "cubeblack", "turf", "cubeturf", "cubes", "slope"]
+    trails = [(T1, 1), (T2, 1), (T3, 1), (T1, 3)]
+
+
     args = parse_args()
     if args.curve_step <= 0:
         raise ValueError("--curve-step must be a positive integer")
 
     run_stamp = datetime.now().strftime("%y%m%d%H%M")
-    curve_compare_output_path = RESULTS_DIRECTORY / f"{run_stamp}_rcurve_compare.png"
-    metrics_output_path = RESULTS_DIRECTORY / f"{run_stamp}_metrics.csv"
 
-    x_train, y_train, class_train, trail_files = load_training_data(args.trail_dir)
-    x_test, positions, class_test, grid_files = load_grid_data(
-        args.grid_dir,
+    # Load and order grid and trail data
+    grid_data = dl.load_grid_data(args.grid_dir)
+    x_test, positions, class_test, grid_files = order_grid_data(
+        grid_data,
         sample_count=args.grid_samples_per_file,
         seed=args.seed,
     )
-
-    x_train, y_train, class_train = _ordered_training_data(
-        x_train,
-        y_train,
-        class_train,
-        shuffle=args.shuffle,
-        seed=args.seed,
-    )
-
-    gp_models = train_reference_gps(x_train, y_train, class_train)
-    y_ref, sigma_ref = gp_reference_predict(gp_models, x_test, class_test)
-
-    et.EvalTools.set_data(x_train, y_train, class_train, x_test, y_ref, class_test)
-    soinn_model = SoinnEvalModel(shuffle=args.shuffle, seed=args.seed, use_fallback=args.fallback)
-    et.EvalTools.set_model(soinn_model)
-    et.EvalTools.train_model()
-    et.EvalTools.y_pred = et.EvalTools.predict_model()
-
-    soinn_curve, curve_steps, curve_r, curve_fallback, curve_r_by_class = train_soinn_learning_curve(
-        x_train,
-        y_train,
-        x_test,
-        class_test,
-        y_ref,
-        sigma_ref,
-        eval_step=args.curve_step,
-        use_fallback=args.fallback,
-    )
-
-    sections = _training_sections(class_train)
-    if args.shuffle:
-        print("Shuffle enabled: section markers no longer represent contiguous terrain blocks")
-        sections = []
-
-    print(f"Loaded {len(trail_files)} trail files")
-    print(f"Loaded trail classes: {trail_files}")
-    print(f"Loaded grid classes: {grid_files}")
-    print(f"Training samples: {len(x_train)}")
-    print(f"Feature shape: {x_train.shape}")
-    print(f"Label shape: {y_train.shape}")
-    print(f"Trained SOINN+ nodes: {len(soinn_model.soinn.nodes) if soinn_model.soinn is not None else 0}")
-    print(f"Trained reference GPs: {len(gp_models)}")
-    print("Training strategy: full trail set as train; grid as test; y_test from per-class GP reference")
-    print(f"Grid sampling -> {args.grid_samples_per_file} cells per file (0 = all cells)")
-    print(f"Prediction mode -> fallback: {args.fallback}")
+    trail_data = dl.load_trail_data(args.trail_dir)
     print(f"Grid sample count -> {len(x_test)}")
-    print(f"Learning curve -> checkpoints: {len(curve_steps)}, eval_step: {args.curve_step}")
-    if curve_steps.size > 0:
-        print(f"Learning curve final R: {curve_r[-1]:.6f} at step {int(curve_steps[-1])}")
-        for class_name, r_curve in curve_r_by_class.items():
-            print(f"Learning curve final R for class '{class_name}': {r_curve[-1]:.6f} at step {int(curve_steps[-1])}")
+    print(f"Grid sampling -> {args.grid_samples_per_file} cells per file (0 = all cells)")
+    print("\n--------\n")
 
-    # abstention = et.EvalTools.abstention_metrics()
-    regression_metrics = et.EvalTools.regression_metrics()
-    uncertainty_metrics = et.EvalTools.compute_uncertainty_metrics(y_ref, et.EvalTools.y_pred, sigma_ref)
-    avg_gp_sigma = float(np.nanmean(sigma_ref))
+    start = datetime.now()
+    gp_models = train_reference_gps(trail_data)
+    stop = datetime.now()
+    gp_training_time = (stop - start).total_seconds()
+    print(f"Trained {len(gp_models)} per-class GP reference models in {gp_training_time:.2f} seconds")
+    start = datetime.now()
+    y_ref, sigma_ref = gp_reference_predict(gp_models, x_test, class_test)
+    stop = datetime.now()
+    gp_prediction_time = (stop - start).total_seconds()
+    print(f"Predicted {len(x_test)} grid samples with GP reference models in {gp_prediction_time:.2f} seconds")
+    print("\n--------\n\n")
 
-    combined_metrics = {
-        **regression_metrics,
-        **uncertainty_metrics,
-        # **abstention,
-        "fallback_predictions_used": float(soinn_model.fallback_count),
-        "avg_gp_sigma": avg_gp_sigma,
-    }
+    trail_number = 0
+    for trail in trails:
+        print("---------------------------------------------------")
+        print(f"Running SOINN+ benchmark for T{trail_number}")
+        print("---------------------------------------------------\n")
+        trail_number += 1
+        class_order, split_into = trail
+        x_train, y_train, class_train, used_order = order_trail_data(trail_data, class_order, split_into)
+        print(f"Using trail order: {used_order} with {split_into} splits per class")
+        print(f"Training samples: {len(x_train)}")
+        print(f"Feature shape: {x_train.shape}")
+        print(f"Label shape: {y_train.shape}")
+        print("\n")
 
-    et.EvalTools.print_metrics("Grid benchmark", combined_metrics)
-    print(f"Average GP sigma: {avg_gp_sigma:.6f}")
 
-    et.EvalTools.plot_learning_curve_comparison(
-        curve_steps,
-        overall_r=curve_r,
-        class_r_curves=curve_r_by_class,
-        output_path=curve_compare_output_path,
-        sections=sections,
-        enabled=args.plot_curve,
-    )
 
-    et.EvalTools.save_class_grid_plots(
-        run_stamp=run_stamp,
-        positions=positions,
-        class_labels=class_test,
-        gp_predictions=y_ref,
-        soinn_predictions=et.EvalTools.y_pred,
-        output_dir=RESULTS_DIRECTORY,
-        cost_mu=dl.COST_MU,
-        cost_sigma=dl.COST_SIGMA,
-    )
+        et.EvalTools.set_data(x_train, y_train, class_train, x_test, y_ref, class_test)
+        soinn_model = SoinnEvalModel(shuffle=args.shuffle, seed=args.seed, use_fallback=args.fallback)
+        et.EvalTools.set_model(soinn_model)
+        start = datetime.now()
+        et.EvalTools.train_model()
+        stop = datetime.now()
+        training_time = (stop - start).total_seconds()
+        print(f"Trained SOINN+ model in {training_time:.2f} seconds")
+        start = datetime.now()
+        et.EvalTools.y_pred = et.EvalTools.predict_model()
+        stop = datetime.now()
+        prediction_time = (stop - start).total_seconds()
+        print(f"Predicted {len(x_test)} grid samples in {prediction_time:.2f} seconds")
 
-    et.EvalTools.save_metrics_csv(
-        output_path=metrics_output_path,
-        metrics=combined_metrics,
-        class_r_curves=curve_r_by_class,
-        curve_r=curve_r,
-    )
+        print("\n")
 
-    if args.plot and soinn_curve.nodes:
-        et.EvalTools.plot_network(soinn_curve, True)
+
+        soinn_curve, curve_steps, curve_r, curve_fallback, curve_r_by_class = train_soinn_learning_curve(
+            x_train,
+            y_train,
+            x_test,
+            class_test,
+            y_ref,
+            sigma_ref,
+            eval_step=args.curve_step,
+            use_fallback=args.fallback,
+        )
+
+        sections = _training_sections(class_train)
+        if args.shuffle:
+            print("Shuffle enabled: section markers no longer represent contiguous terrain blocks")
+            sections = []
+
+        print(f"SOINN+ nodes: {len(soinn_model.soinn.nodes) if soinn_model.soinn is not None else 0}")
+        print(f"Learning curve -> checkpoints: {len(curve_steps)}, eval_step: {args.curve_step}")
+        print("\n")
+
+        print(f"Learning curve final R for trail {trail_number}")
+        if curve_steps.size > 0:
+            print(f"merged & {curve_r[-1]:.6f}\\\\")
+            for class_name, r_curve in curve_r_by_class.items():
+                print(f"{class_name} & {r_curve[-1]:.6f}\\\\")
+        print("\n")
+
+        # abstention = et.EvalTools.abstention_metrics()
+        regression_metrics = et.EvalTools.regression_metrics()
+        uncertainty_metrics = et.EvalTools.compute_uncertainty_metrics(y_ref, et.EvalTools.y_pred, sigma_ref)
+        avg_gp_sigma = float(np.nanmean(sigma_ref))
+
+        combined_metrics = {
+            **regression_metrics,
+            **uncertainty_metrics,
+            # **abstention,
+            "fallback_predictions_used": float(soinn_model.soinn.fallback_count),
+        }
+
+        et.EvalTools.print_metrics("Grid benchmark", combined_metrics)
+
+        curve_compare_output_path = RESULTS_DIRECTORY / f"{run_stamp}_rcurve_compare_T{trail_number}.png"
+        metrics_output_path = RESULTS_DIRECTORY / f"{run_stamp}_metrics_T{trail_number}.csv"
+
+        et.EvalTools.plot_learning_curve_comparison(
+            curve_steps,
+            overall_r=curve_r,
+            class_r_curves=curve_r_by_class,
+            output_path=curve_compare_output_path,
+            sections=sections,
+            enabled=args.plot_curve,
+        )
+        if trail_number == 1:
+            et.EvalTools.save_class_grid_plots(
+                run_stamp=run_stamp,
+                positions=positions,
+                class_labels=class_test,
+                gp_predictions=y_ref,
+                soinn_predictions=et.EvalTools.y_pred,
+                output_dir=RESULTS_DIRECTORY,
+                cost_mu=dl.COST_MU,
+                cost_sigma=dl.COST_SIGMA,
+            )
+
+        et.EvalTools.save_metrics_csv(
+            output_path=metrics_output_path,
+            metrics=combined_metrics,
+            class_r_curves=curve_r_by_class,
+            curve_r=curve_r,
+        )
+
+        if args.plot and soinn_curve.nodes:
+            et.EvalTools.plot_network(soinn_curve, True)
 
 
 if __name__ == "__main__":

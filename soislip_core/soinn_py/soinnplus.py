@@ -70,6 +70,7 @@ class SoinnPlus:
         self.param_edge = 2
         self.param_c = 2
         self.param_alpha = 2
+        self.fallback_count = 0
 
         self._delete_edge_handler: Callable[[int], None] = self._delete_old_edges_plus
         self._delete_noise_handler: Callable[[], None] = self._delete_noise_nodes_plus
@@ -83,6 +84,8 @@ class SoinnPlus:
         ----------
         signal: array-like
             row vector, input signal
+        label_clusters: bool, optional (default=True)
+            Leave true for semi- or unsupervised learning, otherwise clusters are labeled when a label is provided.
         
         Returns:
         prediction: tuple (mean, variance)
@@ -95,15 +98,19 @@ class SoinnPlus:
             raise ValueError("No labels are available for inference. Please provide labels for the nodes before performing inference.")
 
         winner_index = self.find_winner(signal)
-        cluster_nodes, _ = self._get_cluster(winner_index)
+
         if label_clusters:
+            cluster_nodes, _ = self._get_cluster(winner_index)
             self._label_cluster_handler(cluster_nodes)
+
         prediction = self.predictions[winner_index]
 
         if prediction[0] is None:
             prediction = self._fallback_prediction(signal)
+            self.fallback_count += 1
 
         return prediction
+
     
     def batch_inference(self, signals: BatchSignals) -> BatchPredictions:
         '''
@@ -127,11 +134,9 @@ class SoinnPlus:
             signals_iterable = signals
 
         predictions = []
-        latch = True  # Label clusters only once for the batch
         for signal in signals_iterable:
-            prediction = self.inference(signal, label_clusters=latch)
+            prediction = self.inference(signal)
             predictions.append(prediction)
-            latch = False  # Only label clusters for the first signal
         predictions = np.array(predictions, dtype=float)
         return predictions
     
@@ -200,10 +205,25 @@ class SoinnPlus:
         return True
     
     def _fallback_prediction(self, signal: SignalLike) -> Prediction:
-        valid_nodes = [i for i, p in enumerate(self.predictions) if p[0] is not None]
-        valid_vecs = np.vstack([self.nodes[i] for i in valid_nodes])
-        closest_idx = np.argmin(np.linalg.norm(valid_vecs - signal, axis=1))
-        prediction = self.predictions[valid_nodes[closest_idx]]
+        # valid_nodes = [i for i, p in enumerate(self.predictions) if p[0] is not None]
+        # valid_vecs = np.vstack([self.nodes[i] for i in valid_nodes])
+        # closest_idx = np.argmin(np.linalg.norm(valid_vecs - signal, axis=1))
+        # prediction = self.predictions[valid_nodes[closest_idx]]
+        prediction = (None, None)
+        seen_nodes = set()
+        nn = 1
+        while (len(seen_nodes) < len(self.nodes)):
+            nearest_indices, _ = self._find_nearest_nodes(nn, signal)
+            winner_index = nearest_indices[-1]
+            if winner_index in seen_nodes:
+                nn += 1
+                continue
+            cluster_nodes, _ = self._get_cluster(winner_index)
+            seen_nodes.update(cluster_nodes) #TODO: check this.
+            if self._label_cluster_handler(cluster_nodes):
+                prediction = self.predictions[winner_index]
+                break
+            nn += 1
         return prediction
 
     def _update_label(self, node_index: int, label: float | None, is_winner: bool = True) -> None:

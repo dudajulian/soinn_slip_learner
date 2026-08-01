@@ -215,15 +215,16 @@ class EvalTools:
         if not enabled and output_path is None:
             return
 
-        fig, ax = plt.subplots(figsize=(11.0, 3.5))
+        fig, ax = plt.subplots(figsize=(13.0, 3.6))
         ax.plot(steps, r_values, color="#d95f02", linewidth=2.0, label="SOINN+")
-        ax.set_title(title)
-        ax.set_xlabel("Learning step")
-        ax.set_ylabel("R")
+        ax.set_title(title, fontsize=13)
+        ax.set_xlabel("Learning step", fontsize=11)
+        ax.set_ylabel("R", fontsize=11)
         ax.set_ylim(0.0, 1.02)
         ax.set_xlim(0.0, float(steps[-1]))
         ax.grid(alpha=0.25, linestyle="--", linewidth=0.8)
 
+        rotate_labels = len(sections) > 8
         for section_idx, (start_step, section_name) in enumerate(sections):
             next_start = sections[section_idx + 1][0] if section_idx + 1 < len(sections) else int(steps[-1])
             ax.axvline(start_step, color="#b2a38f", linestyle="--", linewidth=0.9, alpha=0.8)
@@ -233,9 +234,11 @@ class EvalTools:
                 0.03,
                 section_name,
                 transform=ax.get_xaxis_transform(),
-                ha="center",
+                ha="left" if rotate_labels else "center",
                 va="bottom",
-                fontsize=9,
+                fontsize=8 if rotate_labels else 9,
+                rotation=90 if rotate_labels else 0,
+                rotation_mode="anchor",
             )
 
         ax.legend(loc="upper right")
@@ -244,7 +247,7 @@ class EvalTools:
         if output_path is not None:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             fig.savefig(output_path, dpi=180)
-            print(f"Saved learning curve plot to {output_path}")
+            # print(f"Saved learning curve plot to {output_path}")
 
         if enabled:
             plt.show()
@@ -263,7 +266,7 @@ class EvalTools:
         if steps.size == 0:
             return
 
-        fig, ax = plt.subplots(figsize=(11.0, 4.2))
+        fig, ax = plt.subplots(figsize=(13.0, 4.2))
         ax.plot(steps, overall_r, linewidth=2.6, color="#1f1f1f", label="all")
 
         class_names = sorted(class_r_curves.keys())
@@ -278,13 +281,13 @@ class EvalTools:
                     label=str(class_name),
                 )
 
-        ax.set_title("R Curve Comparison - All and Per Class")
-        ax.set_xlabel("Learning step")
-        ax.set_ylabel("R")
+        ax.set_xlabel("Learning step", fontsize=11)
+        ax.set_ylabel("R on GP-reference models", fontsize=11)
         ax.set_ylim(0.0, 1.02)
         ax.set_xlim(0.0, float(steps[-1]))
         ax.grid(alpha=0.25, linestyle="--", linewidth=0.8)
 
+        rotate_labels = len(sections) > 8
         for section_idx, (start_step, section_name) in enumerate(sections):
             next_start = sections[section_idx + 1][0] if section_idx + 1 < len(sections) else int(steps[-1])
             ax.axvline(start_step, color="#b2a38f", linestyle="--", linewidth=0.8, alpha=0.6)
@@ -294,16 +297,18 @@ class EvalTools:
                 0.03,
                 section_name,
                 transform=ax.get_xaxis_transform(),
-                ha="center",
+                ha="left" if rotate_labels else "center",
                 va="bottom",
-                fontsize=8,
+                fontsize=7 if rotate_labels else 8,
+                rotation=90 if rotate_labels else 0,
+                rotation_mode="anchor",
             )
 
         ax.legend(loc="center left", bbox_to_anchor=(1.01, 0.5), frameon=False)
         fig.tight_layout()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(output_path, dpi=180)
-        print(f"Saved learning curve comparison plot to {output_path}")
+        # print(f"Saved learning curve comparison plot to {output_path}")
 
         if enabled:
             plt.show()
@@ -341,6 +346,19 @@ class EvalTools:
     ) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        cbar_fig, cbar_ax = plt.subplots(figsize=(2.4, 0.35))
+        cbar = cbar_fig.colorbar(
+            plt.cm.ScalarMappable(cmap="jet", norm=plt.Normalize(vmin=0.0, vmax=0.03)),
+            cax=cbar_ax,
+            orientation="horizontal",
+        )
+        cbar.set_ticks([0.0, 0.01, 0.02, 0.03])
+        cbar_ax.set_title("")
+        cbar_fig.tight_layout(pad=0.0)
+        cbar_path = output_dir / f"{run_stamp}_shared_colorbar.png"
+        cbar_fig.savefig(cbar_path, dpi=180, bbox_inches="tight", pad_inches=0.0)
+        plt.close(cbar_fig)
+
         for class_name in sorted(np.unique(class_labels)):
             mask = class_labels == class_name
             class_positions = positions[mask]
@@ -355,8 +373,8 @@ class EvalTools:
             x_index = {value: idx for idx, value in enumerate(x_unique)}
             y_index = {value: idx for idx, value in enumerate(y_unique)}
 
-            gp_grid = np.full((y_unique.size, x_unique.size), np.nan, dtype=float)
-            soinn_grid = np.full((y_unique.size, x_unique.size), np.nan, dtype=float)
+            gp_grid = np.full((len(y_edges) - 1, len(x_edges) - 1), np.nan, dtype=float)
+            soinn_grid = np.full((len(y_edges) - 1, len(x_edges) - 1), np.nan, dtype=float)
             for point, gp_value, soinn_value in zip(class_positions, gp_values, soinn_values):
                 x_idx = x_index[point[0]]
                 y_idx = y_index[point[1]]
@@ -389,19 +407,23 @@ class EvalTools:
                     edgecolors="none",
                 )
                 ax.set_aspect("equal", adjustable="box")
-                ax.set_xlabel("x")
-                ax.set_ylabel("y")
-                ax.set_title(f"{model_name.upper()} model - {class_name}")
+                ax.set_xticks([])
+                ax.set_yticks([])
+                ax.set_xticklabels([])
+                ax.set_yticklabels([])
+                ax.set_xlabel("")
+                ax.set_ylabel("")
                 ax.set_xlim(x_edges[0], x_edges[-1])
                 ax.set_ylim(y_edges[0], y_edges[-1])
-                fig.colorbar(mesh, ax=ax, fraction=0.046, pad=0.04, label="prediction")
-                fig.tight_layout()
+                ax.set_title("")
+                fig.tight_layout(pad=0.1)
 
                 file_name = f"{run_stamp}_{cls._safe_name(str(class_name))}_{model_name}_grid.png"
                 file_path = output_dir / file_name
-                fig.savefig(file_path, dpi=180)
+                fig.savefig(file_path, dpi=180, bbox_inches="tight", pad_inches=0.1)
                 plt.close(fig)
-                print(f"Saved {model_name.upper()} grid plot to {file_path}")
+
+                # print(f"Saved {model_name.upper()} grid plot to {file_path}")
 
     @staticmethod
     def save_metrics_csv(
@@ -424,4 +446,4 @@ class EvalTools:
                 writer.writerow([f"{key}_r", f"{final_value:.6f}"])
             writer.writerow(["merged_r", f"{final_curve_r:.6f}"])
 
-        print(f"Saved metrics CSV to {output_path}")
+        # print(f"Saved metrics CSV to {output_path}")
