@@ -56,7 +56,7 @@ def generate_launch_description() -> LaunchDescription:
             output='screen',
             parameters=[params_with_substitutions],
             remappings=tf_remaps,
-            arguments=['--ros-args', '--log-level', 'debug'],
+            arguments=['--ros-args', '--log-level', 'info'],
         ),
         Node(
             package='soislip_core',

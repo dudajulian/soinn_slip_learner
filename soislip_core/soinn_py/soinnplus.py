@@ -4,6 +4,7 @@ from typing import Callable, Sequence, TypeAlias
 from .color_utils import ColorUtils as cu
 from scipy.sparse import csr_matrix, lil_matrix
 from scipy.stats import iqr, median_abs_deviation
+from scipy.sparse.csgraph import connected_components
 import matplotlib.pyplot as plt
 
 SignalLike: TypeAlias = np.ndarray | csr_matrix | list[float]
@@ -75,6 +76,7 @@ class SoinnPlus:
         self._delete_edge_handler: Callable[[int], None] = self._delete_old_edges_plus
         self._delete_noise_handler: Callable[[], None] = self._delete_noise_nodes_plus
         self._label_cluster_handler: Callable[[Sequence[int]], bool] = self._label_cluster_median
+        self._fallback_prediction_handler: Callable[[SignalLike], Prediction] = self._next_winner_fallback
         
     def inference(self, signal: SignalLike, label_clusters: bool = True) -> Prediction:
         '''
@@ -106,7 +108,7 @@ class SoinnPlus:
         prediction = self.predictions[winner_index]
 
         if prediction[0] is None:
-            prediction = self._fallback_prediction(signal)
+            prediction = self._fallback_prediction_handler(signal)
             self.fallback_count += 1
 
         return prediction
@@ -204,11 +206,7 @@ class SoinnPlus:
             self.predictions[node_index] = (prediction, density)
         return True
     
-    def _fallback_prediction(self, signal: SignalLike) -> Prediction:
-        # valid_nodes = [i for i, p in enumerate(self.predictions) if p[0] is not None]
-        # valid_vecs = np.vstack([self.nodes[i] for i in valid_nodes])
-        # closest_idx = np.argmin(np.linalg.norm(valid_vecs - signal, axis=1))
-        # prediction = self.predictions[valid_nodes[closest_idx]]
+    def _next_winner_fallback(self, signal: SignalLike) -> Prediction:
         prediction = (None, None)
         seen_nodes = set()
         nn = 1
@@ -225,6 +223,36 @@ class SoinnPlus:
                 break
             nn += 1
         return prediction
+
+    def _closest_label_fallback(self, signal: SignalLike) -> Prediction:
+        valid_nodes = [i for i, l in enumerate(self.labels) if l is not None]
+        valid_vecs = np.vstack([self.nodes[i] for i in valid_nodes])
+        closest_idx = np.argmin(np.linalg.norm(valid_vecs - signal, axis=1))
+        closest_label_node = valid_nodes[closest_idx]
+        cluster, _ = self._get_cluster(closest_label_node)
+        self._label_cluster_handler(cluster)
+        prediction = self.predictions[valid_nodes[closest_idx]]
+        return prediction
+
+
+    def count_clusters(self) -> int:
+        if self.adjacency_mat.shape[0] == 0:
+            return 0
+
+        adj = self.adjacency_mat.tocsr()
+
+        # Keep only nodes connected to at least one other node
+        active = adj.getnnz(axis=1) > 0
+        if not np.any(active):
+            return 0
+
+        sub = adj[active, :][:, active]
+
+        # Binary connectivity (age values do not matter for component count)
+        sub.data = np.ones_like(sub.data)
+
+        n_components, _ = connected_components(sub, directed=False)
+        return int(n_components)
 
     def _update_label(self, node_index: int, label: float | None, is_winner: bool = True) -> None:
         # Update labels like any other dimension
@@ -547,7 +575,7 @@ class SoinnPlus:
     def _get_cluster(self, seed: int) -> tuple[set[int], set[tuple[int, int]]]:
         n_nodes = self.adjacency_mat.shape[0]
         if seed < 0 or seed >= n_nodes:
-            return set(), set()
+            raise ValueError(f"Seed index {seed} is out of bounds for adjacency matrix with {n_nodes} nodes.")
 
         visited = set()
         stack = [seed]

@@ -174,20 +174,21 @@ def gp_reference_predict(
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         # BYPASS: Use precomputed class statistics for mu and sigma instead of GP predictions
-        _, class_mu, class_sigma = CLASS_STATS[str(class_name)]
-        class_mu = (class_mu - MU) / SIG
-        class_sigma = class_sigma / SIG
+        # _, class_mu, class_sigma = CLASS_STATS[str(class_name)]
+        # class_mu = (class_mu - MU) / SIG
+        # class_sigma = class_sigma / SIG
 
-        errors =  mu[mask] - class_mu
-        r = float(np.mean(np.abs(errors) <= 2.0 * class_sigma))
-        print(f"Bypassed GP: GP R value for class '{class_name}': {r:.5f}, count: {np.sum(mask)}")
-        mu[mask] = class_mu
-        sigma[mask] = class_sigma
-        print(f"Bypassed GP: Using class statistics for '{class_name}' (mu, sigma): ({class_mu:.5f}, {class_sigma:.5f}), count: {np.sum(mask)}")
+        # errors =  mu[mask] - class_mu
+        # r = float(np.mean(np.abs(errors) <= 2.0 * class_sigma))
+        # print(f"Bypassed GP: GP R value for class '{class_name}': {r:.5f}, count: {np.sum(mask)}")
+        # mu[mask] = class_mu
+        # sigma[mask] = class_sigma
+        # print(f"Bypassed GP: Using class statistics for '{class_name}' (mu, sigma): ({class_mu:.5f}, {class_sigma:.5f}), count: {np.sum(mask)}")
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+    print(f"GP reference statistics: mean(mu): {float(np.nanmean(mu)* SIG + MU):.5f}, mean(sigma): {float(np.nanmean(sigma)* SIG):.5f}")
     return mu, sigma
 
 
@@ -273,7 +274,7 @@ def parse_args() -> argparse.Namespace:
     parser.set_defaults(fallback=False)
     parser.add_argument("--seed", type=int, default=42, help="Random seed used when shuffling and sampling grid cells")
     parser.add_argument("--grid-samples-per-file", type=int, default=0, help="Number of grid cells sampled per file (0 = all)")
-    parser.add_argument("--curve-step", type=int, default=5, help="Evaluate learning curve every N training samples")
+    parser.add_argument("--curve-step", type=int, default=10, help="Evaluate learning curve every N training samples")
     parser.add_argument("--plot", action="store_true", help="Show SOINN+ network plot")
     parser.add_argument("--plot-curve", action="store_true", help="Show R learning curve plots")
     return parser.parse_args()
@@ -283,6 +284,9 @@ def main() -> None:
     T1 = ["black", "cubeblack", "cubes", "cubeturf", "flat", "slope", "turf"]
     T2 = ["flat", "black", "turf", "cubes", "cubeblack", "cubeturf", "slope"]
     T3 = ["flat", "black", "cubeblack", "turf", "cubeturf", "cubes", "slope"]
+    # T2 = ["cubes", "cubeblack", "black", "cubeturf", "flat", "slope", "turf"]
+    # T1 = ["flat", "cubes", "cubeblack", "cubeturf", "slope", "black", "turf"]
+    # T3 = ["turf", "black", "cubeblack", "flat", "cubeturf", "cubes", "slope"]
     trails = [(T1, 1), (T2, 1), (T3, 1), (T1, 3)]
 
 
@@ -340,6 +344,9 @@ def main() -> None:
         stop = datetime.now()
         training_time = (stop - start).total_seconds()
         print(f"Trained SOINN+ model in {training_time:.2f} seconds")
+        n_clusters = soinn_model.soinn.count_clusters()
+        n_nodes = len(soinn_model.soinn.nodes)
+        print(f"SOINN+ model has {n_clusters} clusters and {n_nodes} nodes after training")
         start = datetime.now()
         et.EvalTools.y_pred = et.EvalTools.predict_model()
         stop = datetime.now()
@@ -349,79 +356,79 @@ def main() -> None:
         print("\n")
 
 
-        soinn_curve, curve_steps, curve_r, curve_fallback, curve_r_by_class = train_soinn_learning_curve(
-            x_train,
-            y_train,
-            x_test,
-            class_test,
-            y_ref,
-            sigma_ref,
-            eval_step=args.curve_step,
-            use_fallback=args.fallback,
-        )
+        # soinn_curve, curve_steps, curve_r, curve_fallback, curve_r_by_class = train_soinn_learning_curve(
+        #     x_train,
+        #     y_train,
+        #     x_test,
+        #     class_test,
+        #     y_ref,
+        #     sigma_ref,
+        #     eval_step=args.curve_step,
+        #     use_fallback=args.fallback,
+        # )
 
-        sections = _training_sections(class_train)
-        if args.shuffle:
-            print("Shuffle enabled: section markers no longer represent contiguous terrain blocks")
-            sections = []
+        # sections = _training_sections(class_train)
+        # if args.shuffle:
+        #     print("Shuffle enabled: section markers no longer represent contiguous terrain blocks")
+        #     sections = []
 
-        print(f"SOINN+ nodes: {len(soinn_model.soinn.nodes) if soinn_model.soinn is not None else 0}")
-        print(f"Learning curve -> checkpoints: {len(curve_steps)}, eval_step: {args.curve_step}")
-        print("\n")
+        # print(f"SOINN+ nodes: {len(soinn_model.soinn.nodes) if soinn_model.soinn is not None else 0}")
+        # print(f"Learning curve -> checkpoints: {len(curve_steps)}, eval_step: {args.curve_step}")
+        # print("\n")
 
-        print(f"Learning curve final R for trail {trail_number}")
-        if curve_steps.size > 0:
-            print(f"merged & {curve_r[-1]:.6f}\\\\")
-            for class_name, r_curve in curve_r_by_class.items():
-                print(f"{class_name} & {r_curve[-1]:.6f}\\\\")
-        print("\n")
+        # print(f"Learning curve final R for trail {trail_number}")
+        # if curve_steps.size > 0:
+        #     print(f"merged & {curve_r[-1]:.6f}\\\\")
+        #     for class_name, r_curve in curve_r_by_class.items():
+        #         print(f"{class_name} & {r_curve[-1]:.6f}\\\\")
+        # print("\n")
 
-        # abstention = et.EvalTools.abstention_metrics()
-        regression_metrics = et.EvalTools.regression_metrics()
-        uncertainty_metrics = et.EvalTools.compute_uncertainty_metrics(y_ref, et.EvalTools.y_pred, sigma_ref)
-        avg_gp_sigma = float(np.nanmean(sigma_ref))
+        # # abstention = et.EvalTools.abstention_metrics()
+        # regression_metrics = et.EvalTools.regression_metrics()
+        # uncertainty_metrics = et.EvalTools.compute_uncertainty_metrics(y_ref, et.EvalTools.y_pred, sigma_ref)
+        # avg_gp_sigma = float(np.nanmean(sigma_ref))
 
-        combined_metrics = {
-            **regression_metrics,
-            **uncertainty_metrics,
-            # **abstention,
-            "fallback_predictions_used": float(soinn_model.soinn.fallback_count),
-        }
+        # combined_metrics = {
+        #     **regression_metrics,
+        #     **uncertainty_metrics,
+        #     # **abstention,
+        #     "fallback_predictions_used": float(soinn_model.soinn.fallback_count),
+        # }
 
-        et.EvalTools.print_metrics("Grid benchmark", combined_metrics)
+        # et.EvalTools.print_metrics("Grid benchmark", combined_metrics)
 
-        curve_compare_output_path = RESULTS_DIRECTORY / f"{run_stamp}_rcurve_compare_T{trail_number}.png"
-        metrics_output_path = RESULTS_DIRECTORY / f"{run_stamp}_metrics_T{trail_number}.csv"
+        # curve_compare_output_path = RESULTS_DIRECTORY / f"{run_stamp}_rcurve_compare_T{trail_number}.png"
+        # metrics_output_path = RESULTS_DIRECTORY / f"{run_stamp}_metrics_T{trail_number}.csv"
 
-        et.EvalTools.plot_learning_curve_comparison(
-            curve_steps,
-            overall_r=curve_r,
-            class_r_curves=curve_r_by_class,
-            output_path=curve_compare_output_path,
-            sections=sections,
-            enabled=args.plot_curve,
-        )
-        if trail_number == 1:
-            et.EvalTools.save_class_grid_plots(
-                run_stamp=run_stamp,
-                positions=positions,
-                class_labels=class_test,
-                gp_predictions=y_ref,
-                soinn_predictions=et.EvalTools.y_pred,
-                output_dir=RESULTS_DIRECTORY,
-                cost_mu=dl.COST_MU,
-                cost_sigma=dl.COST_SIGMA,
-            )
+        # et.EvalTools.plot_learning_curve_comparison(
+        #     curve_steps,
+        #     overall_r=curve_r,
+        #     class_r_curves=curve_r_by_class,
+        #     output_path=curve_compare_output_path,
+        #     sections=sections,
+        #     enabled=args.plot_curve,
+        # )
+        # if trail_number == 1:
+        #     et.EvalTools.save_class_grid_plots(
+        #         run_stamp=run_stamp,
+        #         positions=positions,
+        #         class_labels=class_test,
+        #         gp_predictions=y_ref,
+        #         soinn_predictions=et.EvalTools.y_pred,
+        #         output_dir=RESULTS_DIRECTORY,
+        #         cost_mu=dl.COST_MU,
+        #         cost_sigma=dl.COST_SIGMA,
+        #     )
 
-        et.EvalTools.save_metrics_csv(
-            output_path=metrics_output_path,
-            metrics=combined_metrics,
-            class_r_curves=curve_r_by_class,
-            curve_r=curve_r,
-        )
+        # et.EvalTools.save_metrics_csv(
+        #     output_path=metrics_output_path,
+        #     metrics=combined_metrics,
+        #     class_r_curves=curve_r_by_class,
+        #     curve_r=curve_r,
+        # )
 
-        if args.plot and soinn_curve.nodes:
-            et.EvalTools.plot_network(soinn_curve, True)
+        # if args.plot and soinn_curve.nodes:
+        #     et.EvalTools.plot_network(soinn_curve, True)
 
 
 if __name__ == "__main__":
