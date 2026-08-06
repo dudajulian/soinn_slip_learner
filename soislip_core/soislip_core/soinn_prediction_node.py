@@ -122,30 +122,30 @@ class SoinnPredictionNode(Node):
 
         batch = raw.reshape((-1, feature_dim))
         batch_p_mean = []
-        batch_p_var = []
+        batch_p_conf = []
         first_of_batch = True
         count_successful_inferences = 0
         for index, signal in enumerate(batch):
             try:
-                p_mean, p_var = self.soinn.inference(signal, label_clusters=first_of_batch)
+                p_mean, p_conf = self.soinn.inference(signal, label_clusters=first_of_batch)
                 if p_mean is None:
                     batch_p_mean.append(float('nan'))
                 else:
                     batch_p_mean.append(float(p_mean))
                     count_successful_inferences += 1
-                if p_var is None:
-                    batch_p_var.append(float('nan'))
+                if p_conf is None:
+                    batch_p_conf.append(float('nan'))
                 else:
-                    batch_p_var.append(float(p_var))
+                    batch_p_conf.append(float(p_conf))
 
             except Exception as error:
                 self.get_logger().error(f'Inference failed for sample index {index}: {error}')
                 batch_p_mean.append(float('nan'))
-                batch_p_var.append(float('nan'))
+                batch_p_conf.append(float('nan'))
             first_of_batch = False
 
         response.predictions = Float32MultiArray(data=batch_p_mean)
-        response.confidence_scores = Float32MultiArray(data=batch_p_var)
+        response.confidence_scores = Float32MultiArray(data=batch_p_conf)
         response.success = Bool(data=True)
         response.message = String(data=f'{count_successful_inferences} samples produced successful predictions, {len(batch) - count_successful_inferences} samples failed')
         return response
