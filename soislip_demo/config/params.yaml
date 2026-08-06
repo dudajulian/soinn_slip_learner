@@ -3,7 +3,7 @@ gridmap_feature_extractor_node:
     elevation_map_topic: "/elevation_map"
     feature_service_name: "get_cell_features"
     map_feature_service_name: "get_map_features"
-    feature_radius: 0.8
+    feature_radius: 0.0
 
 # latent_feature_extractor_node:
 #   ros__parameters:
@@ -17,7 +17,7 @@ robot_experience_collector_node:
     robot_frame: "base_link"
     wheel_odom: "/tug_husky/platform/odom"
     wheel_odom_source: "topic"
-    reference_odom: "/visual_odom"
+    reference_odom: "/visual_odom" #make sure the map_frame_id in the elevation mapping config file is also changed accordingly.
     reference_odom_source: "topic"
     sample_distance: 0.2
     min_distance_threshold: 0.05

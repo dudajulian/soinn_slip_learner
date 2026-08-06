@@ -49,7 +49,7 @@ public:
     this->declare_parameter("reference_odom", "map");
     this->declare_parameter("wheel_odom_source", "topic");
     this->declare_parameter("reference_odom_source", "topic");
-    this->declare_parameter("sample_distance", 0.3);
+    this->declare_parameter("sample_distance", 0.1);
     this->declare_parameter("min_distance_threshold", 0.05);
     this->declare_parameter("min_velocity_threshold", 0.05);
     this->declare_parameter("min_acceleration_threshold", 0.1);
@@ -138,14 +138,15 @@ private:
     }
 
     // Calculate the slip based on the last and current transforms.
-    float slip = 0.0F;
-    if (!calculate_slip(transform_last_wheelodom_, transform_last_ref_, current_wheelodom, current_ref, slip)) {
+    float rslip, lslip;
+    if (!calculate_slip(transform_last_wheelodom_, transform_last_ref_, current_wheelodom, current_ref, rslip, lslip)) {
       RCLCPP_DEBUG_THROTTLE(
         this->get_logger(), *this->get_clock(), 2000,
         "Slip calculation failed (displacement too small or below threshold)");
       return;
     }
-
+    std::array<float, 2> wheel_slips = {lslip, rslip};
+    
     // If the feature service is not ready, log a warning and skip this iteration.
     if (!feature_client_->service_is_ready()) {
       RCLCPP_WARN_THROTTLE(
@@ -156,35 +157,41 @@ private:
     // If the feature service is ready, request features for the midpoint position between the last 
     // and current reference transforms.
     else {
-      geometry_msgs::msg::Point midpoint = calculate_midpoint_position(transform_last_ref_, current_ref);
-      auto request = std::make_shared<soislip_interfaces::srv::GetCellFeatures::Request>();
-      request->position = midpoint;
+      // geometry_msgs::msg::Point midpoint = calculate_midpoint_position(transform_last_ref_, current_ref);
+      std::array<geometry_msgs::msg::Point, 2> wheel_points = calculate_wheel_position(transform_last_ref_);
+      for (size_t i = 0; i < 2; ++i) {
+        float slip = wheel_slips[i];
+        geometry_msgs::msg::Point midpoint = wheel_points[i];
 
-      // Asynchronously send the feature request and handle the response in a callback.
-      feature_client_->async_send_request(
-        request,
-        [this, slip](rclcpp::Client<soislip_interfaces::srv::GetCellFeatures>::SharedFuture future) 
-        {
-          soislip_interfaces::msg::SOINNSample sample;
-          // Try to publish the experience sample with the features and slip label.
-          try {
-            auto response = future.get();
-            if (!response->success.data) {
-              throw std::runtime_error(response->message.data.c_str());
+        auto request = std::make_shared<soislip_interfaces::srv::GetCellFeatures::Request>();
+        request->position = midpoint;
+
+        // Asynchronously send the feature request and handle the response in a callback.
+        feature_client_->async_send_request(
+          request,
+          [this, slip](rclcpp::Client<soislip_interfaces::srv::GetCellFeatures>::SharedFuture future) 
+          {
+            soislip_interfaces::msg::SOINNSample sample;
+            // Try to publish the experience sample with the features and slip label.
+            try {
+              auto response = future.get();
+              if (!response->success.data) {
+                throw std::runtime_error(response->message.data.c_str());
+              }
+              sample.features.assign(response->features.data.begin(), response->features.data.end());
+              sample.label = slip;
+              sample.has_label = true;
+              RCLCPP_INFO(this->get_logger(), "Publishing experience sample with %zu features and label %.3f", sample.features.size(), sample.label);
+              sample_pub_->publish(sample);
             }
-            sample.features.assign(response->features.data.begin(), response->features.data.end());
-            sample.label = slip;
-            sample.has_label = true;
-            RCLCPP_INFO(this->get_logger(), "Publishing experience sample with %zu features and label %.3f", sample.features.size(), sample.label);
-            sample_pub_->publish(sample);
+            // Catch any exceptions that occur while processing the response and log a warning.
+            catch (const std::exception & ex) {
+              RCLCPP_ERROR(this->get_logger(), "Feature service response failed: %s", ex.what());
+            }
           }
-          // Catch any exceptions that occur while processing the response and log a warning.
-          catch (const std::exception & ex) {
-            RCLCPP_ERROR(this->get_logger(), "Feature service response failed: %s", ex.what());
-          }
-        });
+        );
+      }
     }
-
     // Update the last transforms for the next iteration.
     transform_last_wheelodom_ = current_wheelodom;
     transform_last_ref_ = current_ref;
@@ -310,7 +317,8 @@ private:
     const tf2::Transform & transform1_ref,
     const tf2::Transform & transform2_wheelodom,
     const tf2::Transform & transform2_ref,
-    float & slip) const
+    float & rslip,
+    float & lslip) const
   {
     tf2::Transform displacement_wheelodom = transform1_wheelodom.inverse() * transform2_wheelodom;
     tf2::Transform displacement_ref = transform1_ref.inverse() * transform2_ref;
@@ -337,7 +345,8 @@ private:
     // slip = static_cast<float>((right_slip + left_slip) / 2.0);
 
     // Norm 2
-    slip = std::sqrt(right_slip * right_slip + left_slip * left_slip) / std::sqrt(2.0);
+    rslip = static_cast<float>(right_slip);
+    lslip = static_cast<float>(left_slip);
 
     // Max
     // slip = static_cast<float>(std::max(right_slip, left_slip));
@@ -391,6 +400,27 @@ private:
       return point;
     }
 
+  std::array<geometry_msgs::msg::Point, 2> calculate_wheel_position(
+    const tf2::Transform & transform1_ref, double y_offset = 0.0, double z_offset = 0.0)
+    {
+      const tf2::Vector3 left_offset(-wheel_separation_ / 2.0, y_offset, z_offset);
+      const tf2::Vector3 right_offset(wheel_separation_ / 2.0, y_offset, z_offset);
+      const tf2::Vector3 point_left = transform1_ref.inverse() * left_offset;
+      const tf2::Vector3 point_right = transform1_ref.inverse() * right_offset;
+
+      geometry_msgs::msg::Point point_left_msg;
+      point_left_msg.x = point_left.x();
+      point_left_msg.y = point_left.y();
+      point_left_msg.z = point_left.z();
+
+      geometry_msgs::msg::Point point_right_msg;
+      point_right_msg.x = point_right.x();
+      point_right_msg.y = point_right.y();
+      point_right_msg.z = point_right.z();
+
+      return {point_left_msg, point_right_msg};
+    }
+
   bool check_minimum_velocity() {
     if (wheel_odom_config_.configured_type == OdomSourceType::Frame
       || reference_odom_config_.configured_type == OdomSourceType::Frame) {
@@ -432,6 +462,7 @@ private:
   OdomSourceConfig wheel_odom_config_;
   OdomSourceConfig reference_odom_config_;
 
+  // Transforms from odometry source frames to the robot frame, used to compute displacements and slips.
   tf2::Transform transform_last_wheelodom_;
   tf2::Transform transform_last_ref_;
 
