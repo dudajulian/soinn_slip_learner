@@ -19,7 +19,7 @@ DEMO_SHARE="$(ros2 pkg prefix soislip_demo)/share/soislip_demo"
 
 ROBOT_RESOURCE_DIR="$DEMO_PKG_DIR/resources/husky"
 ELEVATION_CONFIG_DIR="$DEMO_PKG_DIR/config/elevation_mapping"
-RVIZ_CONFIG_FILE="$DEMO_PKG_DIR/config/rviz/custom_rviz2.rviz"
+RVIZ_CONFIG_FILE="$DEMO_PKG_DIR/config/rviz/husky.rviz"
 
 declare -A cmds=(
   [zed_node]="ros2 launch zed_wrapper zed_camera_tf_remap.launch.py \

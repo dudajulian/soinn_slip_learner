@@ -19,16 +19,14 @@ class SlipPredictionManagerNode : public rclcpp::Node {
 public:
   SlipPredictionManagerNode()
   : Node("slip_prediction_manager") {
-    this->declare_parameter("slip_prediction_map_topic", "/slip_prediction_map");
-    this->declare_parameter("elevation_map_topic", "/elevation_map");
+    this->declare_parameter("reference_map_topic", "/soislip/feature_map");
     this->declare_parameter("slip_layer_name", "slip_prediction");
     this->declare_parameter("confidence_layer_name", "slip_confidence");
     this->declare_parameter("map_feature_service_name", "get_map_features");
     this->declare_parameter("predict_batch_service_name", "predict_batch");
     this->declare_parameter("prediction_period_sec", 1.0);
 
-    this->get_parameter("slip_prediction_map_topic", slip_prediction_map_topic_);
-    this->get_parameter("elevation_map_topic", elevation_map_topic_);
+    this->get_parameter("reference_map_topic", ref_map_topic_);
     this->get_parameter("slip_layer_name", slip_layer_name_);
     this->get_parameter("confidence_layer_name", confidence_layer_name_);
     this->get_parameter("map_feature_service_name", map_feature_service_name_);
@@ -36,10 +34,10 @@ public:
     this->get_parameter("prediction_period_sec", prediction_period_sec_);
 
     slip_map_pub_ = this->create_publisher<grid_map_msgs::msg::GridMap>(
-      slip_prediction_map_topic_, 10);
+      "/soislip/prediction_map", 10);
 
     map_sub_ = this->create_subscription<grid_map_msgs::msg::GridMap>(
-      elevation_map_topic_,
+      ref_map_topic_,
       rclcpp::SensorDataQoS(),
       std::bind(&SlipPredictionManagerNode::handle_map_update, this, std::placeholders::_1));
 
@@ -226,7 +224,7 @@ private:
   bool request_in_flight_{false};
   double prediction_period_sec_{1.0};
   std::string slip_prediction_map_topic_;
-  std::string elevation_map_topic_;
+  std::string ref_map_topic_;
   std::string slip_layer_name_;
   std::string confidence_layer_name_;
   std::string map_feature_service_name_;

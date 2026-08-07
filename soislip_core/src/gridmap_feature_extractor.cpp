@@ -22,7 +22,7 @@ public:
     this->declare_parameter("elevation_map_topic", "/elevation_map");
     this->declare_parameter("feature_service_name", "get_cell_features");
     this->declare_parameter("map_feature_service_name", "get_map_features");
-    this->declare_parameter("feature_radius", 0.0);
+    this->declare_parameter("feature_radius", 0.1);
     this->declare_parameter("robot_max_climbable_slope_deg", 27.0);
 
     this->get_parameter("elevation_map_topic", elevation_map_topic_);
@@ -36,9 +36,8 @@ public:
       rclcpp::SensorDataQoS(),
       std::bind(&GridmapFeatureExtractorNode::callback, this, std::placeholders::_1));
 
-    pub_ = this->create_publisher<grid_map_msgs::msg::GridMap>(
-      "feature_map",
-      rclcpp::SensorDataQoS());
+    map_pub_ = this->create_publisher<grid_map_msgs::msg::GridMap>(
+      "/soislip/feature_map", 10);
 
     service_ = this->create_service<soislip_interfaces::srv::GetCellFeatures>(
       feature_service_name_,
@@ -63,30 +62,35 @@ private:
   void callback(const grid_map_msgs::msg::GridMap::SharedPtr msg) {
     grid_map::GridMap new_map;
     grid_map::GridMap merged_map;
+    float nan = std::numeric_limits<float>::quiet_NaN();
     grid_map::GridMapRosConverter::fromMessage(*msg, new_map);
     std::scoped_lock<std::mutex> lock(map_mutex_);
     if (!has_map_) {
       RCLCPP_INFO(this->get_logger(), "Received first grid map");
       feature_map_ = new_map;
       feature_map_.add("seen", 0.0F);
-      feature_map_.add("feature_slope", 0.0F);
-      feature_map_.add("feature_color", 0.0F);
+      feature_map_.add("feature_slope", nan);
+      feature_map_.add("feature_color", nan);
       has_map_ = true;
     }
-    merged_map = feature_map_;
-    // Update the geometry of internal_map_ to match the new map
-    merged_map.setGeometry(new_map.getLength(), new_map.getResolution(), new_map.getPosition());
-    // Merge the new map into the internal_map_ to keep track of seen cells
-    merged_map.addDataFrom(new_map, true, true, true);
-
+    merged_map = new_map;
+    merged_map.add("seen", 0.0F);
+    merged_map.add("feature_slope", nan);
+    merged_map.add("feature_color", nan);
+    merged_map.addDataFrom(feature_map_, false, true, false, {"seen", "feature_slope", "feature_color"});
     feature_map_ = merged_map;
-    pub_->publish(grid_map::GridMapRosConverter::toMessage(feature_map_));
+    auto fm_msg = grid_map::GridMapRosConverter::toMessage(feature_map_);
+    map_pub_->publish(*fm_msg);
   }
 
   void handle_get_cell_features(
     const std::shared_ptr<soislip_interfaces::srv::GetCellFeatures::Request> request,
     std::shared_ptr<soislip_interfaces::srv::GetCellFeatures::Response> response)
   {
+    const grid_map::Position center(
+      static_cast<double>(request->position.x),
+      static_cast<double>(request->position.y));
+
     grid_map::GridMap map;
     {
       std::scoped_lock<std::mutex> lock(map_mutex_);
@@ -98,9 +102,6 @@ private:
       map = feature_map_;
     }
 
-    const grid_map::Position center(
-      static_cast<double>(request->position.x),
-      static_cast<double>(request->position.y));
 
     std::vector<float> features = extract_features(map, center);
     if (features.empty()) {
@@ -112,6 +113,16 @@ private:
     response->features.data = features;
     response->success.data = true;
     response->message.data = "ok";
+
+    Eigen::Vector3f rgb = lab_to_rgb(features.at(0), features.at(1));
+    float color_value;
+    grid_map::colorVectorToValue(rgb, color_value);
+    {
+      std::scoped_lock<std::mutex> lock(map_mutex_);
+      feature_map_.atPosition("feature_color", center) = color_value;
+      feature_map_.atPosition("feature_slope", center) = features.at(2);  // Store slope feature
+      feature_map_.atPosition("seen", center) = 1.0F;  // Mark the center cell as seen
+    }
   }
 
   void handle_get_map_features(
@@ -137,28 +148,31 @@ private:
 
     for (grid_map::GridMapIterator it(map); !it.isPastEnd(); ++it) {
       grid_map::Position center;
+      std::vector<float> features;
       map.getPosition(*it, center);
-      std::vector<float> features = extract_features(map, center);
+      features = extract_features(map, center);
       if (features.empty()) {
         continue;
       }
-
       if (response->feature_dim == 0) {
+        // Set the feature dimension based on the first valid feature vector
         response->feature_dim = static_cast<int32_t>(features.size());
       }
-
-      if (static_cast<int32_t>(features.size()) != response->feature_dim) {
-        continue;
-      }
-
       geometry_msgs::msg::Point position;
       position.x = center.x();
       position.y = center.y();
       position.z = 0.0;
       response->positions.push_back(position);
       response->features.data.insert(response->features.data.end(), features.begin(), features.end());
+      Eigen::Vector3f rgb = lab_to_rgb(features.at(0), features.at(1));
+      float color_value;
+      grid_map::colorVectorToValue(rgb, color_value);
+      {
+        std::scoped_lock<std::mutex> lock(map_mutex_);
+        feature_map_.atPosition("feature_color", center) = color_value;
+        feature_map_.atPosition("feature_slope", center) = features.at(2);  // Store slope feature
+      }
     }
-
     if (response->positions.empty()) {
       response->success.data = false;
       response->message.data = "No valid cell features found in current map";
@@ -166,23 +180,23 @@ private:
       response->features.data.clear();
       return;
     }
-
     response->success.data = true;
     response->message.data = "ok";
   }
 
+  
   std::vector<float> extract_features(
     const grid_map::GridMap & map,
     const grid_map::Position & center) const
   {
+    const int feature_dim = 4;  // a, b, slope_percent
     if (!map.exists("elevation") || !map.exists("color")) {
       return {};
     }
     if (!map.isInside(center)) {
       return {};
     }
-
-    std::vector<float> features(6, 0.0F);
+    std::vector<float> features(feature_dim, 0.0F);
     grid_map::Position position;
     Eigen::Vector3f xyz;
     Eigen::Vector3f rgb;
@@ -191,7 +205,6 @@ private:
     int color_count = 0;
     // Use a radius that is at least 1.5 times the map resolution to ensure enough points are sampled
     double radius = std::max(feature_radius_, map.getResolution()*1.5);
-
     for (grid_map::CircleIterator it(map, center, radius); !it.isPastEnd(); ++it) {
       map.getPosition(*it, position);
       xyz(0) = static_cast<float>(position(0));
@@ -201,77 +214,60 @@ private:
         points.conservativeResize(Eigen::NoChange, points.cols() + 1);
         points.col(points.cols() - 1) = xyz;
       }
-
       grid_map::colorValueToVector(map.at("color", *it), rgb);
       if (rgb.array().isNaN().any()) {
         continue;
       }
       // Normalized RGB values to avoid biasing the average color towards brighter colors
       // color_sum += rgb / rgb.sum();
-
       // or Lab color
       const Eigen::Vector3f lab = rgb_to_lab(rgb);
       color_sum += lab;
-
       ++color_count;
-
       // Mark seen cell in map
       // map.at("color", *it) = 10000000000.0F;
     }
     if (points.cols() < 3 || color_count == 0) {
       return {};
     }
-
     // Compute the average color and normalize it by the number of valid color points
     // features.at(0) = color_sum(0) / static_cast<float>(color_count); // r
     // features.at(1) = color_sum(1) / static_cast<float>(color_count); // g
     // features.at(2) = color_sum(2) / static_cast<float>(color_count); // b
     features.at(0) = color_sum(1) / static_cast<float>(color_count); // a
     features.at(1) = color_sum(2) / static_cast<float>(color_count); // b
-
     Eigen::Matrix3Xf centered = points.colwise() - points.rowwise().mean();
     Eigen::Matrix3f covariance = (centered * centered.transpose()) / static_cast<float>(points.cols() - 1);
-
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigensolver(covariance);
     if (eigensolver.info() != Eigen::Success) {
       return {};
     }
-
     // MY FEATURES
     // Smallest eigenvalue eigenvector = local plane normal
     Eigen::Vector3f normal = eigensolver.eigenvectors().col(0).normalized();
     if (normal(2) < 0.0F) {
       normal = -normal;  // keep it pointing upward
     }
-
     const float horizontal = std::sqrt(normal(0) * normal(0) + normal(1) * normal(1));
     const float slope_rad = std::atan2(horizontal, std::fabs(normal(2)));
     const float slope_deg = slope_rad * 180.0F / static_cast<float>(M_PI);
     const float slope_percent = slope_deg / robot_max_climbable_slope_deg_;
-
-    
     // Optional roughness proxy:
     const Eigen::Vector3f evals = eigensolver.eigenvalues();
     const float roughness = evals(0);  // smaller is smoother
-
-    features.at(3) = slope_percent;
-
-    
+    features.at(2) = slope_percent;
     // PRAGR'S FEATURES
     // Eigen::Vector3f eigenvalues = eigensolver.eigenvalues();
     // const float largest = eigenvalues(2);
     // if (largest <= 0.0F) {
     //   return {};
     // }
-
     // const float f_random = eigenvalues(0) / largest;
     // const float f_plane = (eigenvalues(1) - eigenvalues(0)) / largest;
     // const float f_line = (largest - eigenvalues(1)) / largest;
-
     // features.at(3) = f_random;
     // features.at(4) = f_plane;
     // features.at(5) = f_line;
-
     return features;
   }
 
@@ -319,6 +315,80 @@ private:
     return Eigen::Vector3f(L, a, b_lab);
   }
 
+  static float clamp01(float v) {
+    return std::max(0.0f, std::min(1.0f, v));
+  }
+
+  static float linear_to_srgb(float c) {
+    c = std::max(0.0f, c);
+    if (c <= 0.0031308F) {
+      return 12.92F * c;
+    }
+    return 1.055F * std::pow(c, 1.0F / 2.4F) - 0.055F;
+  }
+
+  static float lab_f_inv(float t) {
+    constexpr float eps = 216.0F / 24389.0F;
+    constexpr float k = 24389.0F / 27.0F;
+    const float t3 = t * t * t;
+    if (t3 > eps) {
+      return t3;
+    }
+    return (116.0F * t - 16.0F) / k;
+  }
+
+  // Input: Lab a,b
+  // Output: bright/saturated sRGB color in [0,1]
+  static Eigen::Vector3f lab_to_rgb(
+    float a,
+    float b,
+    float L = 75.0F,          // brightness target (0..100)
+    float target_chroma = 55.0F)  // saturation target in Lab
+  {
+    // Normalize chroma to a controlled saturation level.
+    const float chroma = std::sqrt(a * a + b * b);
+    if (chroma > 1e-6F) {
+      const float s = target_chroma / chroma;
+      a *= s;
+      b *= s;
+    }
+
+    // Lab -> XYZ (D65)
+    constexpr float Xn = 0.95047F;
+    constexpr float Yn = 1.00000F;
+    constexpr float Zn = 1.08883F;
+
+    const float fy = (L + 16.0F) / 116.0F;
+    const float fx = fy + a / 500.0F;
+    const float fz = fy - b / 200.0F;
+
+    const float X = Xn * lab_f_inv(fx);
+    const float Y = Yn * lab_f_inv(fy);
+    const float Z = Zn * lab_f_inv(fz);
+
+    // XYZ -> linear sRGB
+    float r_lin =  3.2404542F * X - 1.5371385F * Y - 0.4985314F * Z;
+    float g_lin = -0.9692660F * X + 1.8760108F * Y + 0.0415560F * Z;
+    float b_lin =  0.0556434F * X - 0.2040259F * Y + 1.0572252F * Z;
+
+    // Brighten while preserving hue as much as possible.
+    const float max_lin = std::max(r_lin, std::max(g_lin, b_lin));
+    if (max_lin > 1e-6F && max_lin < 1.0F) {
+      const float gain = 1.0F / max_lin;
+      r_lin *= gain;
+      g_lin *= gain;
+      b_lin *= gain;
+    }
+
+    // Gamma encode + clamp to [0,1]
+    const float r = clamp01(linear_to_srgb(r_lin));
+    const float g = clamp01(linear_to_srgb(g_lin));
+    const float b_out = clamp01(linear_to_srgb(b_lin));
+
+    return Eigen::Vector3f(r, g, b_out);
+  }
+
+
 
 
   std::string elevation_map_topic_;
@@ -332,7 +402,7 @@ private:
   std::mutex map_mutex_;
 
   rclcpp::Subscription<grid_map_msgs::msg::GridMap>::SharedPtr sub_;
-  rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr pub_;
+  rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr map_pub_;
   rclcpp::Service<soislip_interfaces::srv::GetCellFeatures>::SharedPtr service_;
   rclcpp::Service<soislip_interfaces::srv::GetMapFeatures>::SharedPtr map_service_;
 };

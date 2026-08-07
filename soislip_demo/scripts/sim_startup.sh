@@ -19,7 +19,7 @@ DEMO_SHARE="$(ros2 pkg prefix soislip_demo)/share/soislip_demo"
 
 ROBOT_RESOURCE_DIR="$DEMO_SHARE/resources/husky"
 ELEVATION_CONFIG_DIR="$DEMO_SHARE/config/elevation_mapping"
-RVIZ_CONFIG_FILE="$DEMO_SHARE/config/rviz/custom_rviz2.rviz"
+RVIZ_CONFIG_FILE="$DEMO_SHARE/config/rviz/sim_husky.rviz"
 
 declare -A cmds=(
   [coppelia_sim]="'$COPPELIASIM_ROOT_DIR'/coppeliaSim \
