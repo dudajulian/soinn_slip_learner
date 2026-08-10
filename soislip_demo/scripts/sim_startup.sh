@@ -5,6 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEMO_PKG_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKSPACE_ROOT="$(cd "$DEMO_PKG_DIR/../../.." && pwd)"
 SESSION="soislip_husky"
+RUN_TS="$(date +%Y%m%d_%H%M%S)"
+RESULTS_DIR="$WORKSPACE_ROOT/resources/results"
+SAMPLE_CSV="$RESULTS_DIR/${RUN_TS}_sim_samples.csv"
 
 # Load workspace environment once so package-share paths can be resolved.
 set +u
@@ -14,6 +17,7 @@ set -u
 
 # LOG_DIR="$WORKSPACE_ROOT/logs"
 # mkdir -p "$LOG_DIR"
+mkdir -p "$RESULTS_DIR"
 
 DEMO_SHARE="$(ros2 pkg prefix soislip_demo)/share/soislip_demo"
 
@@ -22,8 +26,8 @@ ELEVATION_CONFIG_DIR="$DEMO_SHARE/config/elevation_mapping"
 RVIZ_CONFIG_FILE="$DEMO_SHARE/config/rviz/sim_husky.rviz"
 
 declare -A cmds=(
-  [coppelia_sim]="'$COPPELIASIM_ROOT_DIR'/coppeliaSim \
-    '$ROBOT_RESOURCE_DIR'/scene.ttt -s 0 "
+  [coppelia_sim]="$COPPELIASIM_ROOT_DIR/coppeliaSim \
+    $ROBOT_RESOURCE_DIR/scene.ttt -s 0 "
 #     > '$LOG_DIR/coppelia_sim.log' 2>&1"
   [coppelia_controller]="ros2 launch coppelia_ros2_control coppelia_control.launch.py \
     controller_name:=platform_velocity_controller \
@@ -39,7 +43,7 @@ declare -A cmds=(
     --params-file '$ELEVATION_CONFIG_DIR/postprocessor_pipeline.yaml' "
 #     > '$LOG_DIR/elevation_mapping.log' 2>&1"
   [soislip_demo]="ros2 launch soislip_core soislip.launch.py \
-    params_file:='$DEMO_SHARE/config/sim_params.yaml' "
+    params_file:='$DEMO_SHARE/config/sim_params.yaml'" 
 #     > '$LOG_DIR/soislip_demo.log' 2>&1"
   [rviz]="ros2 run rviz2 rviz2 \
     --display-config '$RVIZ_CONFIG_FILE'
@@ -50,6 +54,14 @@ declare -A cmds=(
   [teleop_joy]="ros2 launch teleop_twist_joy teleop-launch.py \
     joy_config:='xbox' publish_stamped_twist:=true use_sim_time:=true \
     joy_vel:=/platform_velocity_controller/cmd_vel" 
+  [auto_cmdvel]="ros2 topic pub /platform_velocity_controller/cmd_vel \
+    geometry_msgs/msg/TwistStamped '{header: {stamp: {sec: 0, nanosec: 0}, \
+    frame_id: \"base_link\"}, twist: {linear: {x: 0.3, y: 0.0, z: 0.0}, \
+    angular: {x: 0.0, y: 0.0, z: 0.2}}}' -r 10"
+  [sample_recorder]="ros2 run soislip_core sample_recorder_node.py \
+    --ros-args -p use_sim_time:=true \
+    -p sample_topic:=/experience_samples \
+    -p output_csv_path:='$SAMPLE_CSV'"
 )
 
 # Keep startup order aligned with all.launch.py.
@@ -59,22 +71,27 @@ startup_order=(
   elevation_mapping
   soislip_demo
   rviz
-  teleop_key
+  # teleop_key
   # teleop_joy
+  auto_cmdvel
+  sample_recorder
 )
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
   tmux kill-session -t "$SESSION"
 fi
 
-source_cmd="source ~/.bashrc; source '$WORKSPACE_ROOT/install/setup.bash'; cd '$WORKSPACE_ROOT'"
+source_cmd="source ~/.bashrc; source $WORKSPACE_ROOT/install/setup.bash; cd $WORKSPACE_ROOT"
+
 
 tmux new-session -d -s "$SESSION" -n "control"
+tmux set-option -t "$SESSION" mouse on
 for name in "${startup_order[@]}"; do
   echo "Starting $name ..."
   tmux new-window -t "$SESSION" -n "$name"
+  full_cmd="set +u; $source_cmd; set -u; ${cmds[$name]}"
   tmux send-keys -t "$SESSION:$name" \
-    "bash -lc 'set +u; $source_cmd; set -u; ${cmds[$name]}'" C-m
+    "bash -lc $(printf '%q' "$full_cmd")" C-m
   sleep 2
 done
 

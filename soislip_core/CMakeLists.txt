@@ -93,6 +93,7 @@ ament_python_install_package(soinn_py)
 # Install Python executables
 install(PROGRAMS
   soislip_core/latent_feature_extractor_node.py
+  soislip_core/sample_recorder_node.py
   soislip_core/soinn_training_node.py
   soislip_core/soinn_prediction_node.py
   DESTINATION lib/${PROJECT_NAME}

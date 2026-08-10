@@ -5,6 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEMO_PKG_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKSPACE_ROOT="$(cd "$DEMO_PKG_DIR/../../.." && pwd)"
 SESSION="soislip_husky"
+RUN_TS="$(date +%Y%m%d_%H%M%S)"
+RESULTS_DIR="$WORKSPACE_ROOT/results"
+SAMPLE_CSV="$RESULTS_DIR/${RUN_TS}_sim_samples.csv"
 
 # Load workspace environment once so package-share paths can be resolved.
 set +u
@@ -14,6 +17,7 @@ set -u
 
 # LOG_DIR="$WORKSPACE_ROOT/logs"
 # mkdir -p "$LOG_DIR"
+mkdir -p "$RESULTS_DIR"
 
 DEMO_SHARE="$(ros2 pkg prefix soislip_demo)/share/soislip_demo"
 
@@ -55,6 +59,9 @@ declare -A cmds=(
   [teleop_joy]="ros2 launch teleop_twist_joy teleop-launch.py \
     joy_config:='xbox' publish_stamped_twist:=false  \
     joy_vel:=/tug_husky/cmd_vel" 
+  [sample_recorder]="ros2 run soislip_core sample_recorder_node.py \
+    -p sample_topic:=/experience_samples \
+    -p output_csv_path:='$SAMPLE_CSV'"
 )
 
 # Keep startup order aligned with all.launch.py.
@@ -73,14 +80,16 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
   tmux kill-session -t "$SESSION"
 fi
 
-source_cmd="source ~/.bashrc; source '$WORKSPACE_ROOT/install/setup.bash'; cd '$WORKSPACE_ROOT'"
+source_cmd="source ~/.bashrc; source $WORKSPACE_ROOT/install/setup.bash; cd $WORKSPACE_ROOT"
 
 tmux new-session -d -s "$SESSION" -n "control"
+tmux set-option -t "$SESSION" mouse on
 for name in "${startup_order[@]}"; do
   echo "Starting $name ..."
   tmux new-window -t "$SESSION" -n "$name"
+  full_cmd="set +u; $source_cmd; set -u; ${cmds[$name]}"
   tmux send-keys -t "$SESSION:$name" \
-    "bash -lc 'set +u; $source_cmd; set -u; ${cmds[$name]}'" C-m
+    "bash -lc $(printf '%q' "$full_cmd")" C-m
   sleep 2
 done
 

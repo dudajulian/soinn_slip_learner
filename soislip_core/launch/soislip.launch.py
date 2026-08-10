@@ -41,6 +41,7 @@ def generate_launch_description() -> LaunchDescription:
             output='screen',
             parameters=[params_with_substitutions],
             remappings=tf_remaps,
+            arguments=['--ros-args', '--log-level', 'info'],
         ),
         # Node(
         #     package='soislip_core',
@@ -56,7 +57,12 @@ def generate_launch_description() -> LaunchDescription:
             output='screen',
             parameters=[params_with_substitutions],
             remappings=tf_remaps,
-            arguments=['--ros-args', '--log-level', 'info'],
+            arguments=[
+            '--ros-args',
+            '--log-level', 'robot_experience_collector_node:=debug',
+            '--log-level', 'rcl:=warn',
+            '--log-level', 'rclcpp:=warn',
+            ]
         ),
         Node(
             package='soislip_core',
@@ -65,6 +71,7 @@ def generate_launch_description() -> LaunchDescription:
             output='screen',
             parameters=[params_with_substitutions],
             remappings=tf_remaps,
+            arguments=['--ros-args', '--log-level', 'info'],
         ),
         Node(
             package='soislip_core',
@@ -73,6 +80,7 @@ def generate_launch_description() -> LaunchDescription:
             output='screen',
             parameters=[params_with_substitutions],
             remappings=tf_remaps,
+            arguments=['--ros-args', '--log-level', 'info'],
         ),
         Node(
             package='soislip_core',
@@ -81,5 +89,6 @@ def generate_launch_description() -> LaunchDescription:
             output='screen',
             parameters=[params_with_substitutions],
             remappings=tf_remaps,
+            arguments=['--ros-args', '--log-level', 'info'],
         ),
     ])

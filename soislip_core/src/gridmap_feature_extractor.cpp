@@ -102,7 +102,6 @@ private:
       map = feature_map_;
     }
 
-
     std::vector<float> features = extract_features(map, center);
     if (features.empty()) {
       response->success.data = false;
@@ -189,7 +188,7 @@ private:
     const grid_map::GridMap & map,
     const grid_map::Position & center) const
   {
-    const int feature_dim = 4;  // a, b, slope_percent
+    const int feature_dim = 3;  // a, b, slope_percent
     if (!map.exists("elevation") || !map.exists("color")) {
       return {};
     }
