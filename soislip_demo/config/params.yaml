@@ -3,7 +3,8 @@ gridmap_feature_extractor_node:
     elevation_map_topic: "/elevation_map"
     feature_service_name: "get_cell_features"
     map_feature_service_name: "get_map_features"
-    feature_radius: 0.0
+    ellipse_a: 0.1
+    ellipse_b: 0.8
 
 # latent_feature_extractor_node:
 #   ros__parameters:

@@ -47,12 +47,12 @@ public:
     this->declare_parameter("robot_frame", "base_link");
     this->declare_parameter("wheel_odom", "odom");
     this->declare_parameter("reference_odom", "map");
-    this->declare_parameter("wheel_odom_source", "topic");
-    this->declare_parameter("reference_odom_source", "topic");
+    this->declare_parameter("wheel_odom_source", "frame");
+    this->declare_parameter("reference_odom_source", "frame");
     this->declare_parameter("sample_distance", 0.1);
     this->declare_parameter("min_distance_threshold", 0.05);
     this->declare_parameter("min_velocity_threshold", 0.05);
-    this->declare_parameter("min_acceleration_threshold", 0.1);
+    this->declare_parameter("max_velocity_threshold", 2.0);
     this->declare_parameter("odom_timeout_sec", 0.1);
     this->declare_parameter("output_topic", "/experience_samples");
     this->declare_parameter("feature_service_name", "get_cell_features");
@@ -68,9 +68,9 @@ public:
     this->get_parameter("reference_odom_source", reference_odom_source);
     this->get_parameter("sample_distance", sample_distance_);
     this->get_parameter("min_distance_threshold", min_distance_threshold_);
-    this->get_parameter("min_acceleration_threshold", min_acceleration_threshold_);
     this->get_parameter("odom_timeout_sec", odom_timeout_sec_);
-    this->get_parameter("min_velocity_threshold", min_velocity_threshold_);
+    this->get_parameter("min_velocity_threshold", min_wheel_velocity_threshold_);
+    this->get_parameter("max_velocity_threshold", max_ref_velocity_threshold_);
     this->get_parameter("output_topic", output_topic_);
     this->get_parameter("feature_service_name", feature_service_name_);
     this->get_parameter("tf_poll_period_sec", tf_poll_period_sec_);
@@ -103,6 +103,14 @@ private:
     double new_timestamp;
     double dt_wheel2ref;
     
+    // If the feature service is not ready, log a warning and skip this iteration.
+    if (!feature_client_->service_is_ready()) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000, "Feature service '%s' not available",
+        feature_service_name_.c_str());
+      skip_iteration_ = true;
+      return;
+    } 
 
     // Get the current transforms for wheel odometry and reference odometry.
     if (!get_robot_transforms(new_tf_wheelodom, new_tf_ref, new_timestamp, dt_wheel2ref)) {
@@ -110,7 +118,6 @@ private:
         this->get_logger(), *this->get_clock(), 5000,
         "Failed to get robot transforms (wheel_odom='%s', reference_odom='%s')",
         wheel_odom_.c_str(), reference_odom_.c_str());
-      skip_iteration_ = true;
       return;
     }
 
@@ -135,25 +142,25 @@ private:
     }
     // Check if the robot's velocity is above the minimum threshold before proceeding with slip calculation.
     double dt = std::chrono::duration<double>(new_timestamp - last_timestamp_).count();
-    if (!check_minimum_velocity(last_tf_wheelodom_, new_tf_wheelodom, dt)) {return;}
-    // Check if the robot's acceleration is above the minimum threshold before proceeding with slip calculation.
-    // if (!check_minimum_acceleration(last_tf_wheelodom_, new_tf_wheelodom)) {return;}
+    if (!check_minimum_velocity(last_tf_wheelodom_, new_tf_wheelodom, dt)) {
+      skip_iteration_ = true;
+      return;
+    }
+    if (!check_maximum_velocity(last_tf_ref_, new_tf_ref, dt)) {
+      skip_iteration_ = true;
+      return;
+    }
     // Calculate the slip based on the last and current transforms.
     float rslip, lslip;
-    if (!calculate_slip(last_tf_wheelodom_, last_tf_ref_, new_tf_wheelodom, new_tf_ref, rslip, lslip)) {return;}
+    if (!calculate_slip(last_tf_wheelodom_, last_tf_ref_, new_tf_wheelodom, new_tf_ref, rslip, lslip)) {
+      RCLCPP_DEBUG_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "Waiting for sufficient movement (successive transforms) to calculate slip.");
+      return;
+    }
     std::array<float, 2> wheel_slips = {lslip, rslip};
     
-    // If the feature service is not ready, log a warning and skip this iteration.
-    if (!feature_client_->service_is_ready()) {
-      RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), 2000, "Feature service '%s' not available",
-        feature_service_name_.c_str());
-    } 
-    
-    // If the feature service is ready, request features for the sample_pos position between the last 
-    // and current reference transforms.
-    else {
-      // geometry_msgs::msg::Point sample_pos = calculate_midpoint_position(last_tf_ref_, new_tf_ref);
+    double robot_yaw = get_yaw_from_transform(last_tf_ref_);
     std::array<geometry_msgs::msg::Point, 2> wheel_positions = calculate_wheel_position(last_tf_ref_);
       for (size_t i = 0; i < 2; ++i) {
         float slip = wheel_slips[i];
@@ -163,6 +170,7 @@ private:
           i, sample_pos.x, sample_pos.y, sample_pos.z, slip);
         auto request = std::make_shared<soislip_interfaces::srv::GetCellFeatures::Request>();
         request->position = sample_pos;
+        request->rotation = static_cast<double>(robot_yaw);
 
         // Asynchronously send the feature request and handle the response in a callback.
         feature_client_->async_send_request(
@@ -194,7 +202,6 @@ private:
           }
         );
       }
-    }
     // Update the last transforms for the next iteration.
     last_tf_wheelodom_ = new_tf_wheelodom;
     last_tf_ref_ = new_tf_ref;
@@ -389,11 +396,7 @@ private:
     double & dsl,
     double & dsr) const
   {
-    double roll = 0.0;
-    double pitch = 0.0;
-    double yaw = 0.0;
-    tf2::Matrix3x3 rot_mat(displacement.getRotation());
-    rot_mat.getRPY(roll, pitch, yaw);
+    double yaw = get_yaw_from_transform(displacement);
 
     tf2::Vector3 dv = displacement.getOrigin();
     dv.setZ(0.0);
@@ -406,6 +409,15 @@ private:
   // ----------------------------------------------------------------------------------------------
   // Helper Functions
   // ----------------------------------------------------------------------------------------------
+
+  static double get_yaw_from_transform(const tf2::Transform & transform) {
+    double roll = 0.0;
+    double pitch = 0.0;
+    double yaw = 0.0;
+    tf2::Matrix3x3 rot_mat(transform.getRotation());
+    rot_mat.getRPY(roll, pitch, yaw);
+    return yaw;
+  }
     
   static geometry_msgs::msg::Point calculate_midpoint_position(
     const tf2::Transform & transform1_ref,
@@ -445,7 +457,7 @@ private:
       point_right_msg.z = point_right.z();
 
       return {point_left_msg, point_right_msg};
-    }
+  }
 
   bool check_minimum_velocity(const tf2::Transform & t1, const tf2::Transform & t2, const double dt) {
     float ds = t1.inverse().getOrigin().distance(t2.inverse().getOrigin());
@@ -453,38 +465,40 @@ private:
     RCLCPP_DEBUG_THROTTLE(
       this->get_logger(), *this->get_clock(), 2000,
       "Wheel odometry displacement %.4f m over %.4f s, velocity %.4f m/s", ds, dt, velocity);
-    if (velocity < min_velocity_threshold_) {
+    if (velocity < min_wheel_velocity_threshold_) {
       RCLCPP_WARN_THROTTLE(
         this->get_logger(), *this->get_clock(), 5000,
         "Wheel odometry velocity %.4f m/s below minimum threshold %.4f m/s. Skipping slip calculation.", 
-        velocity, min_velocity_threshold_);
+        velocity, min_wheel_velocity_threshold_);
       return false;
     }
     return true;
   }
-  
-  bool check_minimum_acceleration() {
-    // TODO: Implement
-    // const double v1x = latest_wheel_odom_msg_->twist.twist.linear.x;
-    // const double acceleration = std::sqrt(ax * ax + ay * ay + az * az);
-    // if (acceleration < min_acceleration_threshold_) {
-    //   RCLCPP_DEBUG_THROTTLE(
-    //     this->get_logger(), *this->get_clock(), 2000,
-    //     "Wheel odometry acceleration %.4f m/s² below minimum threshold %.4f m/s². Skipping slip calculation.",
-    //     acceleration, min_acceleration_threshold_);
-    //   return false;
-    // }
+
+  bool check_maximum_velocity(const tf2::Transform & t1, const tf2::Transform & t2, const double dt) {
+    float ds = t1.inverse().getOrigin().distance(t2.inverse().getOrigin());
+    float velocity = ds / dt;
+    RCLCPP_DEBUG_THROTTLE(
+      this->get_logger(), *this->get_clock(), 2000,
+      "Reference odometry displacement %.4f m over %.4f s, velocity %.4f m/s", ds, dt, velocity);
+    if (velocity > max_ref_velocity_threshold_) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "Reference odometry velocity %.4f m/s above maximum threshold %.4f m/s. Skipping slip calculation.", 
+        velocity, max_ref_velocity_threshold_);
+      return false;
+    }
     return true;
   }
 
   bool skip_iteration_{true};
-  double wheel_separation_;
-  double sample_distance_;
-  double min_distance_threshold_;
-  double min_acceleration_threshold_;
+  double wheel_separation_; // Distance between the left and right wheels of the robot (default: 0.3m)
+  double sample_distance_; // Minimum distance traveled before publishing a new experience sample (default: 0.1m)
+  double min_distance_threshold_; // Minimum distance traveled per wheel in any odometry source to avoid division by close to zero (default: 0.05m)
   double odom_timeout_sec_;
-  double min_velocity_threshold_;
-  double tf_poll_period_sec_;
+  double min_wheel_velocity_threshold_; // Minimum wheel odometry velocity to consider for slip calculation (default: 0.05 m/s)
+  double max_ref_velocity_threshold_; // Maximum reference odometry velocity to consider for slip calculation (default: 2.0 m/s)
+  double tf_poll_period_sec_; // How often to poll for transforms in seconds (default: 0.05s = 20Hz)
   std::string robot_frame_;
   std::string wheel_odom_;
   std::string reference_odom_;

@@ -22,13 +22,15 @@ public:
     this->declare_parameter("elevation_map_topic", "/elevation_map");
     this->declare_parameter("feature_service_name", "get_cell_features");
     this->declare_parameter("map_feature_service_name", "get_map_features");
-    this->declare_parameter("feature_radius", 0.1);
+    this->declare_parameter("ellipse_a", 0.0);
+    this->declare_parameter("ellipse_b", 0.0);
     this->declare_parameter("robot_max_climbable_slope_deg", 27.0);
 
     this->get_parameter("elevation_map_topic", elevation_map_topic_);
     this->get_parameter("feature_service_name", feature_service_name_);
     this->get_parameter("map_feature_service_name", map_feature_service_name_);
-    this->get_parameter("feature_radius", feature_radius_);
+    this->get_parameter("ellipse_a", ellipse_a_);
+    this->get_parameter("ellipse_b", ellipse_b_);
     this->get_parameter("robot_max_climbable_slope_deg", robot_max_climbable_slope_deg_);
 
     sub_ = this->create_subscription<grid_map_msgs::msg::GridMap>(
@@ -90,6 +92,7 @@ private:
     const grid_map::Position center(
       static_cast<double>(request->position.x),
       static_cast<double>(request->position.y));
+    const double rotation = static_cast<double>(request->rotation);
 
     grid_map::GridMap map;
     {
@@ -102,7 +105,7 @@ private:
       map = feature_map_;
     }
 
-    std::vector<float> features = extract_features(map, center);
+    std::vector<float> features = extract_features(map, center, rotation);
     if (features.empty()) {
       response->success.data = false;
       response->message.data = "Could not extract features at requested position";
@@ -128,7 +131,7 @@ private:
     const std::shared_ptr<soislip_interfaces::srv::GetMapFeatures::Request> request,
     std::shared_ptr<soislip_interfaces::srv::GetMapFeatures::Response> response)
   {
-    (void)request;
+    double rotation = static_cast<double>(request->rotation);
     grid_map::GridMap map;
     {
       std::scoped_lock<std::mutex> lock(map_mutex_);
@@ -149,7 +152,7 @@ private:
       grid_map::Position center;
       std::vector<float> features;
       map.getPosition(*it, center);
-      features = extract_features(map, center);
+      features = extract_features(map, center, rotation);
       if (features.empty()) {
         continue;
       }
@@ -186,7 +189,8 @@ private:
   
   std::vector<float> extract_features(
     const grid_map::GridMap & map,
-    const grid_map::Position & center) const
+    const grid_map::Position & center,
+    const double rotation) const
   {
     const int feature_dim = 3;  // a, b, slope_percent
     if (!map.exists("elevation") || !map.exists("color")) {
@@ -203,8 +207,10 @@ private:
     Eigen::Matrix3Xf points(3, 0);
     int color_count = 0;
     // Use a radius that is at least 1.5 times the map resolution to ensure enough points are sampled
-    double radius = std::max(feature_radius_, map.getResolution()*1.5);
-    for (grid_map::CircleIterator it(map, center, radius); !it.isPastEnd(); ++it) {
+    double length_a = std::max(ellipse_a_, map.getResolution()*1.5);
+    double length_b = std::max(ellipse_b_, map.getResolution()*1.5);
+    grid_map::Length length(length_a, length_b);
+    for (grid_map::EllipseIterator it(map, center, length, rotation); !it.isPastEnd(); ++it) {
       map.getPosition(*it, position);
       xyz(0) = static_cast<float>(position(0));
       xyz(1) = static_cast<float>(position(1));
@@ -393,7 +399,8 @@ private:
   std::string elevation_map_topic_;
   std::string feature_service_name_;
   std::string map_feature_service_name_;
-  double feature_radius_;
+  double ellipse_a_; // semi-major axis of the ellipse for feature extraction
+  double ellipse_b_; // semi-minor axis of the ellipse for feature extraction
   float robot_max_climbable_slope_deg_;
   bool has_map_{false};
   grid_map::GridMap feature_map_; // latest received map

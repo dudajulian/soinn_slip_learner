@@ -24,7 +24,7 @@ public:
     this->declare_parameter("confidence_layer_name", "slip_confidence");
     this->declare_parameter("map_feature_service_name", "get_map_features");
     this->declare_parameter("predict_batch_service_name", "predict_batch");
-    this->declare_parameter("prediction_period_sec", 1.0);
+    this->declare_parameter("prediction_period_sec", 5.0);
 
     this->get_parameter("reference_map_topic", ref_map_topic_);
     this->get_parameter("slip_layer_name", slip_layer_name_);
@@ -79,9 +79,12 @@ private:
         "Service '%s' is not available", predict_batch_service_name_.c_str());
       return;
     }
+    double rotation = 0.0F; //TODO: Get rotation from robot pose.
+
 
     request_in_flight_ = true;
     auto map_request = std::make_shared<soislip_interfaces::srv::GetMapFeatures::Request>();
+    map_request->rotation = rotation; 
     map_feature_client_->async_send_request(
       map_request,
       std::bind(&SlipPredictionManagerNode::handle_map_features_response, this, std::placeholders::_1));
