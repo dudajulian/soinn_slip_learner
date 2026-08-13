@@ -59,7 +59,7 @@ def generate_launch_description() -> LaunchDescription:
             remappings=tf_remaps,
             arguments=[
             '--ros-args',
-            '--log-level', 'robot_experience_collector_node:=debug',
+            '--log-level', 'robot_experience_collector_node:=info',
             '--log-level', 'rcl:=warn',
             '--log-level', 'rclcpp:=warn',
             ]
