@@ -106,7 +106,7 @@ private:
     // If the feature service is not ready, log a warning and skip this iteration.
     if (!feature_client_->service_is_ready()) {
       RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), 2000, "Feature service '%s' not available",
+        this->get_logger(), *this->get_clock(), 5000, "Feature service '%s' not available",
         feature_service_name_.c_str());
       skip_iteration_ = true;
       return;
@@ -123,13 +123,13 @@ private:
 
     // Log the current transforms for debugging purposes.
     RCLCPP_DEBUG_THROTTLE(
-      this->get_logger(), *this->get_clock(), 2000,
+      this->get_logger(), *this->get_clock(), 5000,
       "Got robot transforms in %.2f sec delta: wheel_odom=(%.2f, %.2f, %.2f), reference_odom=(%.2f, %.2f, %.2f)",
       dt_wheel2ref,
       new_tf_wheelodom.getOrigin().x(), new_tf_wheelodom.getOrigin().y(), new_tf_wheelodom.getOrigin().z(),
       new_tf_ref.getOrigin().x(), new_tf_ref.getOrigin().y(), new_tf_ref.getOrigin().z());
     RCLCPP_DEBUG_THROTTLE(
-      this->get_logger(), *this->get_clock(), 2000,
+      this->get_logger(), *this->get_clock(), 5000,
       "skip_iteration_=%s", skip_iteration_ ? "true" : "false");
 
     // If this is the first iteration after a reset, we skip processing to avoid publishing a sample with zero displacement.
@@ -154,18 +154,18 @@ private:
     float rslip, lslip;
     if (!calculate_slip(last_tf_wheelodom_, last_tf_ref_, new_tf_wheelodom, new_tf_ref, rslip, lslip)) {
       RCLCPP_DEBUG_THROTTLE(
-        this->get_logger(), *this->get_clock(), 2000,
+        this->get_logger(), *this->get_clock(), 5000,
         "Waiting for sufficient movement (successive transforms) to calculate slip.");
       return;
     }
     std::array<float, 2> wheel_slips = {lslip, rslip};
     
-    double robot_yaw = get_yaw_from_transform(last_tf_ref_);
+    double robot_yaw = get_yaw_from_transform(last_tf_ref_.inverse());
     std::array<geometry_msgs::msg::Point, 2> wheel_positions = calculate_wheel_position(last_tf_ref_);
       for (size_t i = 0; i < 2; ++i) {
         float slip = wheel_slips[i];
         geometry_msgs::msg::Point sample_pos = wheel_positions[i];
-        RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+        RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
           "Requesting features for wheel %zu at position (%.2f, %.2f, %.2f) with slip %.3f", 
           i, sample_pos.x, sample_pos.y, sample_pos.z, slip);
         auto request = std::make_shared<soislip_interfaces::srv::GetCellFeatures::Request>();
@@ -192,12 +192,13 @@ private:
               sample.position.header.stamp = this->now();
               sample.position.header.frame_id = "map"; // TODO: Make this configurable if needed;
               sample_pub_->publish(sample);
-              RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+              RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
               "Publishing experience sample with %zu features and label %.3f", sample.features.size(), sample.label);
             }
             // Catch any exceptions that occur while processing the response and log a warning.
             catch (const std::exception & ex) {
-              RCLCPP_ERROR(this->get_logger(), "Feature service response failed: %s", ex.what());
+              RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+              "Feature service response failed: %s", ex.what());
             }
           }
         );
@@ -361,7 +362,7 @@ private:
       std::fabs(dsr_ref) < sample_distance_)
     {
       RCLCPP_DEBUG_THROTTLE(
-        this->get_logger(), *this->get_clock(), 2000,
+        this->get_logger(), *this->get_clock(), 5000,
         "Slip calculation failed: Displacement too small (wheelodom: left=%.4f, right=%.4f; ref: left=%.4f, right=%.4f)",
         dsl_wheelodom, dsr_wheelodom, dsl_ref, dsr_ref);
       return false;
@@ -435,10 +436,10 @@ private:
     }
 
   std::array<geometry_msgs::msg::Point, 2> calculate_wheel_position(
-    const tf2::Transform & transform1_ref, double x_offset = 0.4, double z_offset = 0.0)
+    const tf2::Transform & transform1_ref, double x_offset = 0.0, double z_offset = 0.0)
     {
       tf2::Vector3 sample_pos = transform1_ref.inverse().getOrigin();
-      RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+      RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
         "Calculate features from position (%.2f, %.2f, %.2f)", 
         sample_pos.x(), sample_pos.y(), sample_pos.z());
       const tf2::Vector3 left_offset(x_offset, wheel_separation_ / 2.0, z_offset);
@@ -463,7 +464,7 @@ private:
     float ds = t1.inverse().getOrigin().distance(t2.inverse().getOrigin());
     float velocity = ds / dt;
     RCLCPP_DEBUG_THROTTLE(
-      this->get_logger(), *this->get_clock(), 2000,
+      this->get_logger(), *this->get_clock(), 5000,
       "Wheel odometry displacement %.4f m over %.4f s, velocity %.4f m/s", ds, dt, velocity);
     if (velocity < min_wheel_velocity_threshold_) {
       RCLCPP_WARN_THROTTLE(
@@ -479,7 +480,7 @@ private:
     float ds = t1.inverse().getOrigin().distance(t2.inverse().getOrigin());
     float velocity = ds / dt;
     RCLCPP_DEBUG_THROTTLE(
-      this->get_logger(), *this->get_clock(), 2000,
+      this->get_logger(), *this->get_clock(), 5000,
       "Reference odometry displacement %.4f m over %.4f s, velocity %.4f m/s", ds, dt, velocity);
     if (velocity > max_ref_velocity_threshold_) {
       RCLCPP_WARN_THROTTLE(

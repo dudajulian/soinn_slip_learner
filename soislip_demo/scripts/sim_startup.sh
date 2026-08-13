@@ -22,8 +22,9 @@ mkdir -p "$RESULTS_DIR"
 DEMO_SHARE="$(ros2 pkg prefix soislip_demo)/share/soislip_demo"
 
 ROBOT_RESOURCE_DIR="$DEMO_SHARE/resources/husky"
-ELEVATION_CONFIG_DIR="$DEMO_SHARE/config/elevation_mapping"
 RVIZ_CONFIG_FILE="$DEMO_SHARE/config/rviz/sim_husky.rviz"
+ELEVATION_CONFIG_DIR="$DEMO_PKG_DIR/config/elevation_mapping"
+SOISLIP_CONFIG_FILE="$DEMO_PKG_DIR/config/sim_params.yaml"
 
 declare -A cmds=(
   [coppelia_sim]="$COPPELIASIM_ROOT_DIR/coppeliaSim \
@@ -43,7 +44,7 @@ declare -A cmds=(
     --params-file '$ELEVATION_CONFIG_DIR/postprocessor_pipeline.yaml' "
 #     > '$LOG_DIR/elevation_mapping.log' 2>&1"
   [soislip_demo]="ros2 launch soislip_core soislip.launch.py \
-    params_file:='$DEMO_SHARE/config/sim_params.yaml'" 
+    params_file:='$SOISLIP_CONFIG_FILE'" 
 #     > '$LOG_DIR/soislip_demo.log' 2>&1"
   [rviz]="ros2 run rviz2 rviz2 \
     --display-config '$RVIZ_CONFIG_FILE'
@@ -56,8 +57,8 @@ declare -A cmds=(
     joy_vel:=/platform_velocity_controller/cmd_vel" 
   [auto_cmdvel]="ros2 topic pub /platform_velocity_controller/cmd_vel \
     geometry_msgs/msg/TwistStamped '{header: {stamp: {sec: 0, nanosec: 0}, \
-    frame_id: \"base_link\"}, twist: {linear: {x: 0.3, y: 0.0, z: 0.0}, \
-    angular: {x: 0.0, y: 0.0, z: 0.2}}}' -r 10"
+    frame_id: \"base_link\"}, twist: {linear: {x: 0.5, y: 0.0, z: 0.0}, \
+    angular: {x: 0.0, y: 0.0, z: 0.15}}}' -r 10"
   [sample_recorder]="ros2 run soislip_core sample_recorder_node.py \
     --ros-args -p use_sim_time:=true \
     -p sample_topic:=/experience_samples \
@@ -71,10 +72,10 @@ startup_order=(
   elevation_mapping
   soislip_demo
   rviz
-  # teleop_key
+  teleop_key
   # teleop_joy
-  auto_cmdvel
-  sample_recorder
+  # auto_cmdvel
+  # sample_recorder
 )
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then

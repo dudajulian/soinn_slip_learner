@@ -105,7 +105,7 @@ private:
       map = feature_map_;
     }
 
-    std::vector<float> features = extract_features(map, center, rotation);
+    std::vector<float> features = extract_features(map, center, rotation, true);
     if (features.empty()) {
       response->success.data = false;
       response->message.data = "Could not extract features at requested position";
@@ -123,7 +123,7 @@ private:
       std::scoped_lock<std::mutex> lock(map_mutex_);
       feature_map_.atPosition("feature_color", center) = color_value;
       feature_map_.atPosition("feature_slope", center) = features.at(2);  // Store slope feature
-      feature_map_.atPosition("seen", center) = 1.0F;  // Mark the center cell as seen
+      feature_map_.atPosition("seen", center) = 0.3F;  // Mark the center cell as seen
     }
   }
 
@@ -190,13 +190,20 @@ private:
   std::vector<float> extract_features(
     const grid_map::GridMap & map,
     const grid_map::Position & center,
-    const double rotation) const
+    const double rotation,
+    const bool markCells = false)
   {
     const int feature_dim = 3;  // a, b, slope_percent
     if (!map.exists("elevation") || !map.exists("color")) {
-      return {};
+      RCLCPP_ERROR_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "Grid map does not contain required layers 'elevation' and 'color'");
+        return {};
     }
     if (!map.isInside(center)) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "Requested position (%.2f, %.2f) is outside the grid map bounds", center.x(), center.y());
       return {};
     }
     std::vector<float> features(feature_dim, 0.0F);
@@ -207,8 +214,14 @@ private:
     Eigen::Matrix3Xf points(3, 0);
     int color_count = 0;
     // Use a radius that is at least 1.5 times the map resolution to ensure enough points are sampled
-    double length_a = std::max(ellipse_a_, map.getResolution()*1.5);
-    double length_b = std::max(ellipse_b_, map.getResolution()*1.5);
+    double length_a = std::max(ellipse_a_, map.getResolution()*3.0);
+    double length_b = std::max(ellipse_b_, map.getResolution()*3.0);
+    if(markCells) {
+      RCLCPP_DEBUG_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "Extracting features at position (%.2f, %.2f) with ellipse axes (%.2f, %.2f) and rotation %.2f rad",
+        center.x(), center.y(), length_a, length_b, rotation);
+      }
     grid_map::Length length(length_a, length_b);
     for (grid_map::EllipseIterator it(map, center, length, rotation); !it.isPastEnd(); ++it) {
       map.getPosition(*it, position);
@@ -230,9 +243,17 @@ private:
       color_sum += lab;
       ++color_count;
       // Mark seen cell in map
-      // map.at("color", *it) = 10000000000.0F;
+      if (markCells)
+      {
+        std::scoped_lock<std::mutex> lock(map_mutex_);
+        feature_map_.atPosition("seen", position) = 0.3F;  // Mark the center cell as seen
+      }
     }
     if (points.cols() < 3 || color_count == 0) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "Not enough valid points in the neighborhood to compute features at position (%.2f, %.2f)",
+        center.x(), center.y());
       return {};
     }
     // Compute the average color and normalize it by the number of valid color points
@@ -245,6 +266,9 @@ private:
     Eigen::Matrix3f covariance = (centered * centered.transpose()) / static_cast<float>(points.cols() - 1);
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigensolver(covariance);
     if (eigensolver.info() != Eigen::Success) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "Eigen decomposition failed at position (%.2f, %.2f)", center.x(), center.y());
       return {};
     }
     // MY FEATURES

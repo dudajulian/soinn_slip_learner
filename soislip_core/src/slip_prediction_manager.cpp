@@ -69,13 +69,13 @@ private:
 
     if (!map_feature_client_->service_is_ready()) {
       RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), 2000,
+        this->get_logger(), *this->get_clock(), 5000,
         "Service '%s' is not available", map_feature_service_name_.c_str());
       return;
     }
     if (!predict_batch_client_->service_is_ready()) {
       RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), 2000,
+        this->get_logger(), *this->get_clock(), 5000,
         "Service '%s' is not available", predict_batch_service_name_.c_str());
       return;
     }
@@ -186,7 +186,7 @@ private:
       std::scoped_lock<std::mutex> lock(map_mutex_);
       if (!has_map_) {
         RCLCPP_WARN_THROTTLE(
-          this->get_logger(), *this->get_clock(), 2000,
+          this->get_logger(), *this->get_clock(), 5000,
           "No elevation map available to publish prediction layer");
         return;
       }

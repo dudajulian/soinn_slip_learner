@@ -1,9 +1,8 @@
 gridmap_feature_extractor_node:
   ros__parameters:
     elevation_map_topic: "/elevation_map"
-    # feature_service_name: "get_cell_features"
-    # map_feature_service_name: "get_map_features"
-    # feature_radius: 0.0
+    ellipse_a: 0.8
+    ellipse_b: 0.05
 
 # latent_feature_extractor_node:
 #   ros__parameters:
@@ -21,35 +20,23 @@ robot_experience_collector_node:
     reference_odom_source: "frame"
     sample_distance: 0.2
     min_distance_threshold: 0.05
-    min_velocity_threshold: 0.05 # ignored if wheel_odom_source is "frame"
-    min_acceleration_threshold: 0.1 # ignored if no IMU is used
+    min_velocity_threshold: 0.2 
+    max_velocity_threshold: 2.0
     odom_timeout_sec: 0.5
-    # output_topic: "/experience_samples"
-    # feature_service_name: "get_cell_features"
 
 soinn_training_node:
   ros__parameters:
     model_path: "/workspaces/vscode_ros2_workspace/src/soinn_slip_learner/soislip_demo/models/soinn_model.pkl"
     init_new_model: true
     sample_topic: "/experience_samples"
-    input_dimension: 0
-    model_age_max: 1000
-    model_lambda: 10
     auto_save_period_sec: 20.0
 
 soinn_prediction_node:
   ros__parameters:
     model_path: "/workspaces/vscode_ros2_workspace/src/soinn_slip_learner/soislip_demo/models/soinn_model.pkl"
-    # service_name: "predict_batch"
-    # feature_dim: 0
     model_reload_period_sec: 20.0
 
 slip_prediction_manager:
   ros__parameters:
-    # prediction_points_topic: "/slip_prediction_points"
-    # slip_prediction_map_topic: "/slip_prediction_map"
     elevation_map_topic: "/elevation_map"
-    # slip_layer_name: "slip_prediction"
-    # map_feature_service_name: "get_map_features"
-    # predict_batch_service_name: "predict_batch"
     prediction_period_sec: 5.0

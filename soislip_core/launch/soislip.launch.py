@@ -41,7 +41,12 @@ def generate_launch_description() -> LaunchDescription:
             output='screen',
             parameters=[params_with_substitutions],
             remappings=tf_remaps,
-            arguments=['--ros-args', '--log-level', 'info'],
+            arguments=[
+            '--ros-args',
+            '--log-level', 'gridmap_feature_extractor_node:=info',
+            '--log-level', 'rcl:=warn',
+            '--log-level', 'rclcpp:=warn',
+            ]
         ),
         # Node(
         #     package='soislip_core',
@@ -71,7 +76,12 @@ def generate_launch_description() -> LaunchDescription:
             output='screen',
             parameters=[params_with_substitutions],
             remappings=tf_remaps,
-            arguments=['--ros-args', '--log-level', 'info'],
+            arguments=[
+            '--ros-args',
+            '--log-level', 'soinn_training_node:=info',
+            '--log-level', 'rcl:=warn',
+            '--log-level', 'rclcpp:=warn',
+            ]
         ),
         Node(
             package='soislip_core',
@@ -80,7 +90,12 @@ def generate_launch_description() -> LaunchDescription:
             output='screen',
             parameters=[params_with_substitutions],
             remappings=tf_remaps,
-            arguments=['--ros-args', '--log-level', 'info'],
+            arguments=[
+            '--ros-args',
+            '--log-level', 'soinn_prediction_node:=info',
+            '--log-level', 'rcl:=warn',
+            '--log-level', 'rclcpp:=warn',
+            ]
         ),
         Node(
             package='soislip_core',
@@ -89,6 +104,11 @@ def generate_launch_description() -> LaunchDescription:
             output='screen',
             parameters=[params_with_substitutions],
             remappings=tf_remaps,
-            arguments=['--ros-args', '--log-level', 'info'],
+            arguments=[
+            '--ros-args',
+            '--log-level', 'slip_prediction_manager:=info',
+            '--log-level', 'rcl:=warn',
+            '--log-level', 'rclcpp:=warn',
+            ]
         ),
     ])
