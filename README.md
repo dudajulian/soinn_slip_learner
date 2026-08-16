@@ -2,9 +2,8 @@
   <img src="./icon.png" alt="Repository icon" width="128" height="128">
 </p>
 
-# SOISLIP
-
-SOINN-based slip learning package for ROS 2, with C++ orchestration/feature nodes and Python model nodes.
+# SoiSlip
+Online Incremental SOINN-based slip learning for differential drive robots. ROS 2 package, including automatic slip detection from visual and wheel odometry and a standalone SOINN+ implementation with ROS interface, suitable to other use-cases.
 
 ## Installation
 System Dependencies:
