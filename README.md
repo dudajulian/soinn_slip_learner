@@ -1,5 +1,5 @@
-<p align="center">
-  <img src="./icon.png" alt="Repository icon" width="64" height="64">
+<p align="left">
+  <img src="./icon.png" alt="Repository icon" width="128" height="128">
 </p>
 
 # SOISLIP
