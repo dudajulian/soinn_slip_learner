@@ -1,5 +1,8 @@
+<p align="center">
+  <img src="./icon.png" alt="Repository icon" width="64" height="64">
+</p>
+
 # SOISLIP
-![Repository icon](./icon.png)
 
 SOINN-based slip learning package for ROS 2, with C++ orchestration/feature nodes and Python model nodes.
 
