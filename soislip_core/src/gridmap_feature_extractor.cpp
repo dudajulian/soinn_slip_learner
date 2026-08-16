@@ -116,7 +116,8 @@ private:
     response->success.data = true;
     response->message.data = "ok";
 
-    Eigen::Vector3f rgb = lab_to_rgb(features.at(0), features.at(1));
+    // Eigen::Vector3f rgb = lab_to_rgb(features.at(0), features.at(1));
+    Eigen::Vector3f rgb = Eigen::Vector3f(features.at(0), features.at(1), 1.0 - features.at(0) - features.at(1));  // Use a simple mapping for demonstration
     float color_value;
     grid_map::colorVectorToValue(rgb, color_value);
     {
@@ -210,9 +211,9 @@ private:
     grid_map::Position position;
     Eigen::Vector3f xyz;
     Eigen::Vector3f rgb;
-    Eigen::Vector3f color_sum = Eigen::Vector3f::Zero();
+    Eigen::Matrix3Xf colors(3, 0);
     Eigen::Matrix3Xf points(3, 0);
-    int color_count = 0;
+    int cell_count = 0;
     // Use a radius that is at least 1.5 times the map resolution to ensure enough points are sampled
     double length_a = std::max(ellipse_a_, map.getResolution()*3.0);
     double length_b = std::max(ellipse_b_, map.getResolution()*3.0);
@@ -224,6 +225,8 @@ private:
       }
     grid_map::Length length(length_a, length_b);
     for (grid_map::EllipseIterator it(map, center, length, rotation); !it.isPastEnd(); ++it) {
+    // for (grid_map::CircleIterator it(map, center, length_a/2.0); !it.isPastEnd(); ++it) {
+      // Collect points
       map.getPosition(*it, position);
       xyz(0) = static_cast<float>(position(0));
       xyz(1) = static_cast<float>(position(1));
@@ -232,16 +235,12 @@ private:
         points.conservativeResize(Eigen::NoChange, points.cols() + 1);
         points.col(points.cols() - 1) = xyz;
       }
+      // Collect colors
       grid_map::colorValueToVector(map.at("color", *it), rgb);
-      if (rgb.array().isNaN().any()) {
-        continue;
+      if (!colors.array().isNaN().any()) {
+        colors.conservativeResize(Eigen::NoChange, colors.cols() + 1);
+        colors.col(colors.cols() - 1) = rgb;
       }
-      // Normalized RGB values to avoid biasing the average color towards brighter colors
-      // color_sum += rgb / rgb.sum();
-      // or Lab color
-      const Eigen::Vector3f lab = rgb_to_lab(rgb);
-      color_sum += lab;
-      ++color_count;
       // Mark seen cell in map
       if (markCells)
       {
@@ -249,19 +248,21 @@ private:
         feature_map_.atPosition("seen", position) = 0.3F;  // Mark the center cell as seen
       }
     }
-    if (points.cols() < 3 || color_count == 0) {
+    // Check if we have enough valid points and colors to compute features
+    if (points.cols() < 3 || colors.cols() < 1) {
       RCLCPP_WARN_THROTTLE(
         this->get_logger(), *this->get_clock(), 5000,
         "Not enough valid points in the neighborhood to compute features at position (%.2f, %.2f)",
         center.x(), center.y());
-      return {};
-    }
-    // Compute the average color and normalize it by the number of valid color points
-    // features.at(0) = color_sum(0) / static_cast<float>(color_count); // r
-    // features.at(1) = color_sum(1) / static_cast<float>(color_count); // g
-    // features.at(2) = color_sum(2) / static_cast<float>(color_count); // b
-    features.at(0) = color_sum(1) / static_cast<float>(color_count); // a
-    features.at(1) = color_sum(2) / static_cast<float>(color_count); // b
+        return {};
+      }
+
+    // Compute mean color in Lab space
+    // Eigen::Vector3f normalized_rgb = colors.colwise() / colors.colwise().sum();
+    Eigen::Vector3f rgb_mean = colors.rowwise().mean();
+    const Eigen::Vector3f lab = rgb_to_lab(rgb_mean);
+    features.at(0) = lab(1); // a
+    features.at(1) = lab(2); // b
     Eigen::Matrix3Xf centered = points.colwise() - points.rowwise().mean();
     Eigen::Matrix3f covariance = (centered * centered.transpose()) / static_cast<float>(points.cols() - 1);
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigensolver(covariance);

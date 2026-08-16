@@ -1,4 +1,5 @@
-# soislip_core
+# SOISLIP
+![Repository icon](./icon.png)
 
 SOINN-based slip learning package for ROS 2, with C++ orchestration/feature nodes and Python model nodes.
 

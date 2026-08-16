@@ -50,7 +50,7 @@ declare -A cmds=(
     --display-config '$RVIZ_CONFIG_FILE'
     --ros-args -p use_sim_time:=true "
   [teleop_key]="ros2 run teleop_twist_keyboard teleop_twist_keyboard \
-    --ros-args -p stamped:=true -p use_sim_time:=true \
+    --ros-args -p stamped:=true -p use_sim_time:=true -p speed:=0.5 -p turn:=0.3\
     --remap cmd_vel:=/platform_velocity_controller/cmd_vel" 
   [teleop_joy]="ros2 launch teleop_twist_joy teleop-launch.py \
     joy_config:='xbox' publish_stamped_twist:=true use_sim_time:=true \
@@ -72,10 +72,10 @@ startup_order=(
   elevation_mapping
   soislip_demo
   rviz
+  sample_recorder
   teleop_key
   # teleop_joy
   # auto_cmdvel
-  # sample_recorder
 )
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then

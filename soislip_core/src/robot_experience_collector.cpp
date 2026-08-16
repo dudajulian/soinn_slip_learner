@@ -44,6 +44,7 @@ public:
   RobotExperienceCollectorNode()
   : Node("robot_experience_collector_node") {
     this->declare_parameter("wheel_separation", 0.3);
+    this->declare_parameter("wheel_x_offset", 0.0);
     this->declare_parameter("robot_frame", "base_link");
     this->declare_parameter("wheel_odom", "odom");
     this->declare_parameter("reference_odom", "map");
@@ -61,6 +62,7 @@ public:
     std::string wheel_odom_source;
     std::string reference_odom_source;
     this->get_parameter("wheel_separation", wheel_separation_);
+    this->get_parameter("wheel_x_offset", wheel_x_offset_);
     this->get_parameter("robot_frame", robot_frame_);
     this->get_parameter("wheel_odom", wheel_odom_);
     this->get_parameter("reference_odom", reference_odom_);
@@ -161,7 +163,7 @@ private:
     std::array<float, 2> wheel_slips = {lslip, rslip};
     
     double robot_yaw = get_yaw_from_transform(last_tf_ref_.inverse());
-    std::array<geometry_msgs::msg::Point, 2> wheel_positions = calculate_wheel_position(last_tf_ref_);
+    std::array<geometry_msgs::msg::Point, 2> wheel_positions = calculate_wheel_position(last_tf_ref_, wheel_x_offset_);
       for (size_t i = 0; i < 2; ++i) {
         float slip = wheel_slips[i];
         geometry_msgs::msg::Point sample_pos = wheel_positions[i];
@@ -507,6 +509,7 @@ private:
   std::string feature_service_name_;
   OdomSourceConfig wheel_odom_config_;
   OdomSourceConfig reference_odom_config_;
+  double wheel_x_offset_;
 
   // Transforms from odometry source frames to the robot frame, used to compute displacements and slips.
   tf2::Transform last_tf_wheelodom_;

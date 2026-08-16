@@ -1,7 +1,7 @@
 gridmap_feature_extractor_node:
   ros__parameters:
     elevation_map_topic: "/elevation_map"
-    ellipse_a: 0.8
+    ellipse_a: 0.7
     ellipse_b: 0.05
 
 # latent_feature_extractor_node:
@@ -13,6 +13,7 @@ gridmap_feature_extractor_node:
 robot_experience_collector_node:
   ros__parameters:
     wheel_separation: 0.512
+    wheel_x_offset: 0.0
     robot_frame: "base_link"
     wheel_odom: "odom"
     wheel_odom_source: "frame"
@@ -26,14 +27,14 @@ robot_experience_collector_node:
 
 soinn_training_node:
   ros__parameters:
-    model_path: "/workspaces/vscode_ros2_workspace/src/soinn_slip_learner/soislip_demo/models/soinn_model.pkl"
-    init_new_model: true
+    model_path: "/workspaces/vscode_ros2_workspace/src/soinn_slip_learner/soislip_demo/models/default_model.pkl"
+    init_new_model: false
     sample_topic: "/experience_samples"
     auto_save_period_sec: 20.0
 
 soinn_prediction_node:
   ros__parameters:
-    model_path: "/workspaces/vscode_ros2_workspace/src/soinn_slip_learner/soislip_demo/models/soinn_model.pkl"
+    model_path: "/workspaces/vscode_ros2_workspace/src/soinn_slip_learner/soislip_demo/models/default_model.pkl"
     model_reload_period_sec: 20.0
 
 slip_prediction_manager:
