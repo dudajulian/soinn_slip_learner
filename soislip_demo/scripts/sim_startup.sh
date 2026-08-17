@@ -21,6 +21,7 @@ mkdir -p "$RESULTS_DIR"
 
 DEMO_SHARE="$(ros2 pkg prefix soislip_demo)/share/soislip_demo"
 
+COPPELIA_RESOURCE_DIR="$DEMO_SHARE/resources/coppelia_sim"
 ROBOT_RESOURCE_DIR="$DEMO_SHARE/resources/husky"
 RVIZ_CONFIG_FILE="$DEMO_SHARE/config/rviz/sim_husky.rviz"
 ELEVATION_CONFIG_DIR="$DEMO_PKG_DIR/config/elevation_mapping"
@@ -28,7 +29,7 @@ SOISLIP_CONFIG_FILE="$DEMO_PKG_DIR/config/sim_params.yaml"
 
 declare -A cmds=(
   [coppelia_sim]="$COPPELIASIM_ROOT_DIR/coppeliaSim \
-    $ROBOT_RESOURCE_DIR/scene.ttt -s 0 "
+    $COPPELIA_RESOURCE_DIR/scene.ttt -s 0 "
 #     > '$LOG_DIR/coppelia_sim.log' 2>&1"
   [coppelia_controller]="ros2 launch coppelia_ros2_control coppelia_control.launch.py \
     controller_name:=platform_velocity_controller \

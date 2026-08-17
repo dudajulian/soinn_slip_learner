@@ -52,16 +52,16 @@ Visualization Manager:
       Autocompute Intensity Bounds: true
       Class: grid_map_rviz_plugin/GridMap
       Color: 200; 200; 200
-      Color Layer: color
-      Color Transformer: ColorLayer
+      Color Layer: slip_prediction
+      Color Transformer: IntensityLayer
       Enabled: true
       Height Layer: elevation
       Height Transformer: Layer
       History Length: 1
       Invert Rainbow: false
-      Max Color: 255; 255; 255
+      Max Color: 0; 255; 255
       Max Intensity: 10
-      Min Color: 0; 0; 0
+      Min Color: 0; 0; 20
       Min Intensity: 0
       Name: GridMap
       Show Grid Lines: true
@@ -72,7 +72,7 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /soislip/prediction_map
-      Use Rainbow: true
+      Use Rainbow: false
       Value: true
     - Class: rviz_default_plugins/TF
       Enabled: true
@@ -83,21 +83,7 @@ Visualization Manager:
           Value: false
         base_link:
           Value: true
-        bracket_0_link:
-          Value: false
-        bracket_0_mount:
-          Value: false
-        camera_0_bottom_screw_frame:
-          Value: false
-        camera_0_link:
-          Value: false
         default_mount:
-          Value: false
-        fath_pivot_0_hinge_link:
-          Value: false
-        fath_pivot_0_link:
-          Value: false
-        fath_pivot_0_mount:
           Value: false
         front_bumper_base_link:
           Value: false
@@ -111,16 +97,8 @@ Visualization Manager:
           Value: false
         inertial_link:
           Value: false
-        lidar2d_0_laser:
-          Value: false
-        lidar2d_0_link:
-          Value: false
-        lidar3d_0_laser:
-          Value: false
-        lidar3d_0_link:
-          Value: false
-        map:
-          Value: false
+        laser:
+          Value: true
         odom:
           Value: false
         rear_bumper_base_link:
@@ -133,89 +111,7 @@ Visualization Manager:
           Value: false
         rear_right_wheel:
           Value: false
-        sensor_arch_link:
-          Value: false
-        sensor_arch_mount:
-          Value: false
         top_chassis_link:
-          Value: false
-        top_plate_adjust_link:
-          Value: false
-        top_plate_link:
-          Value: false
-        top_plate_mount_a1:
-          Value: false
-        top_plate_mount_a2:
-          Value: false
-        top_plate_mount_a3:
-          Value: false
-        top_plate_mount_a4:
-          Value: false
-        top_plate_mount_a5:
-          Value: false
-        top_plate_mount_a6:
-          Value: false
-        top_plate_mount_a7:
-          Value: false
-        top_plate_mount_a8:
-          Value: false
-        top_plate_mount_b1:
-          Value: false
-        top_plate_mount_b2:
-          Value: false
-        top_plate_mount_b7:
-          Value: false
-        top_plate_mount_b8:
-          Value: false
-        top_plate_mount_c1:
-          Value: false
-        top_plate_mount_c2:
-          Value: false
-        top_plate_mount_c7:
-          Value: false
-        top_plate_mount_c8:
-          Value: false
-        top_plate_mount_d1:
-          Value: false
-        top_plate_mount_d2:
-          Value: false
-        top_plate_mount_d7:
-          Value: false
-        top_plate_mount_d8:
-          Value: false
-        top_plate_mount_e1:
-          Value: false
-        top_plate_mount_e2:
-          Value: false
-        top_plate_mount_e7:
-          Value: false
-        top_plate_mount_e8:
-          Value: false
-        top_plate_mount_f1:
-          Value: false
-        top_plate_mount_f2:
-          Value: false
-        top_plate_mount_f7:
-          Value: false
-        top_plate_mount_f8:
-          Value: false
-        top_plate_mount_g1:
-          Value: false
-        top_plate_mount_g2:
-          Value: false
-        top_plate_mount_g3:
-          Value: false
-        top_plate_mount_g4:
-          Value: false
-        top_plate_mount_g5:
-          Value: false
-        top_plate_mount_g6:
-          Value: false
-        top_plate_mount_g7:
-          Value: false
-        top_plate_mount_g8:
-          Value: false
-        user_bay_cover_link:
           Value: false
       Marker Scale: 1
       Name: TF
@@ -244,6 +140,74 @@ Visualization Manager:
         Expand Link Details: false
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
+        base_footprint:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        default_mount:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        front_bumper_base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        front_bumper_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        front_bumper_mount:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        front_left_wheel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        front_right_wheel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        inertial_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        rear_bumper_base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        rear_bumper_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        rear_bumper_mount:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        rear_left_wheel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        rear_right_wheel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        top_chassis_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
       Mass Properties:
         Inertia: false
         Mass: false
