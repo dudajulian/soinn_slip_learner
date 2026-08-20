@@ -49,7 +49,7 @@ Visualization Manager:
       Reference Frame: <Fixed Frame>
       Value: true
     - Alpha: 1
-      Autocompute Intensity Bounds: true
+      Autocompute Intensity Bounds: false
       Class: grid_map_rviz_plugin/GridMap
       Color: 200; 200; 200
       Color Layer: slip_prediction
@@ -60,7 +60,7 @@ Visualization Manager:
       History Length: 1
       Invert Rainbow: false
       Max Color: 0; 255; 255
-      Max Intensity: 10
+      Max Intensity: 1
       Min Color: 0; 0; 20
       Min Intensity: 0
       Name: GridMap
@@ -113,79 +113,13 @@ Visualization Manager:
           Value: false
         top_chassis_link:
           Value: false
-        visual_odom:
-          Value: true
-        zed_baro_link:
-          Value: false
-        zed_camera_center:
-          Value: false
-        zed_camera_link:
-          Value: true
-        zed_left_camera_frame:
-          Value: false
-        zed_left_camera_frame_optical:
-          Value: false
-        zed_mag_link:
-          Value: false
-        zed_right_camera_frame:
-          Value: false
-        zed_right_camera_frame_optical:
-          Value: false
-        zed_temp_left_link:
-          Value: false
-        zed_temp_right_link:
-          Value: false
       Marker Scale: 1
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: true
       Tree:
-        odom:
-          base_link:
-            base_footprint:
-              {}
-            default_mount:
-              laser:
-                {}
-            front_bumper_mount:
-              front_bumper_base_link:
-                front_bumper_link:
-                  {}
-            front_left_wheel:
-              {}
-            front_right_wheel:
-              {}
-            inertial_link:
-              {}
-            rear_bumper_mount:
-              rear_bumper_base_link:
-                rear_bumper_link:
-                  {}
-            rear_left_wheel:
-              {}
-            rear_right_wheel:
-              {}
-            top_chassis_link:
-              {}
-            visual_odom:
-              {}
-            zed_camera_link:
-              zed_camera_center:
-                zed_baro_link:
-                  {}
-                zed_left_camera_frame:
-                  zed_left_camera_frame_optical:
-                    {}
-                  zed_temp_left_link:
-                    {}
-                zed_mag_link:
-                  {}
-                zed_right_camera_frame:
-                  zed_right_camera_frame_optical:
-                    {}
-                  zed_temp_right_link:
-                    {}
+        {}
       Update Interval: 0
       Value: true
     - Alpha: 1
