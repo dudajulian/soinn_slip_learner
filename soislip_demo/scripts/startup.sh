@@ -33,7 +33,7 @@ declare -A cmds=(
     tf_static_topic:=/tug_husky/tf_static \
     namespace:=jetson"
   [static_tf_zed]="ros2 run tf2_ros static_transform_publisher \
-    0.41 0.0 0.39 0 0.0 0 base_link zed_camera_link \
+    0.41 0.0 0.39 0 0.261 0 base_link zed_camera_link \
     --ros-args -r /tf:=/tug_husky/tf -r /tf_static:=/tug_husky/tf_static"
   [laser_odom]="ros2 launch rf2o_laser_odometry rf2o_laser_odometry.launch.py laser_scan_topic:=/scan publish_tf:=False"
   [camera_odom_republisher]="ros2 run soislip_core camera_odom_republisher --ros-args \
@@ -46,7 +46,7 @@ declare -A cmds=(
     --params-file '$ELEVATION_CONFIG_DIR/aslam.yaml' \
     --params-file '$ELEVATION_CONFIG_DIR/postprocessor_pipeline.yaml'"
 #     > '$LOG_DIR/elevation_mapping.log' 2>&1"
-  [soislip_demo]="ros2 launch soislip_core soislip.launch.py \
+  [soislip]="ros2 launch soislip_core soislip.launch.py \
     tf_topic:=/tug_husky/tf \
     tf_static_topic:=/tug_husky/tf_static \
     params_file:='$DEMO_PKG_DIR/config/params.yaml'"
@@ -67,14 +67,15 @@ declare -A cmds=(
 
 # Keep startup order aligned with all.launch.py.
 startup_order=(
-  # static_tf_zed
-  # zed_node
+  static_tf_zed
+  zed_node
   laser_odom
   camera_odom_republisher
-  # elevation_mapping
-  # soislip_demo
+  elevation_mapping
+  soislip
+  # sample_recorder
   # rviz
-  teleop_key
+  # teleop_key
   # teleop_joy
 )
 

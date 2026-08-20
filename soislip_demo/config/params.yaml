@@ -15,13 +15,13 @@ robot_experience_collector_node:
     wheel_separation: 0.512
     wheel_x_offset: 0.0
     robot_frame: "base_link"
-    wheel_odom: "/tug_husky/platform/odom"
-    wheel_odom_source: "topic"
-    reference_odom: "/visual_odom" #make sure the map_frame_id in the elevation mapping config file is also changed accordingly.
-    reference_odom_source: "topic"
-    sample_distance: 0.2
+    wheel_odom: "odom"
+    wheel_odom_source: "frame"
+    reference_odom: "visual_odom" #make sure the map_frame_id in the elevation mapping config file is also changed accordingly.
+    reference_odom_source: "frame"
+    sample_distance: 0.15
     min_distance_threshold: 0.05
-    min_velocity_threshold: 0.2 
+    min_velocity_threshold: 0.1 
     max_velocity_threshold: 2.0
     odom_timeout_sec: 0.5
 
@@ -31,13 +31,13 @@ soinn_training_node:
     # "$(find-pkg-share soislip_demo)/models/soinn_model.pkl"
     init_new_model: false
     sample_topic: "/experience_samples"
-    auto_save_period_sec: 20.0
+    auto_save_period_sec: 10.0
 
 soinn_prediction_node:
   ros__parameters:
     model_path: "/home/jetta/thesis_ws/src/soinn_slip_learner/soislip_demo/models/default_model.pkl"
     # "$(find-pkg-share soislip_demo)/models/soinn_model.pkl"
-    model_reload_period_sec: 20.0
+    model_reload_period_sec: 10.0
 
 slip_prediction_manager:
   ros__parameters:
