@@ -6,7 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /GridMap1
-        - /TF1/Frames1
+        - /TF1
       Splitter Ratio: 0.5
     Tree Height: 1080
   - Class: rviz_common/Selection
@@ -100,7 +100,7 @@ Visualization Manager:
         laser:
           Value: true
         odom:
-          Value: false
+          Value: true
         rear_bumper_base_link:
           Value: false
         rear_bumper_link:
@@ -113,13 +113,79 @@ Visualization Manager:
           Value: false
         top_chassis_link:
           Value: false
+        visual_odom:
+          Value: true
+        zed_baro_link:
+          Value: false
+        zed_camera_center:
+          Value: false
+        zed_camera_link:
+          Value: true
+        zed_left_camera_frame:
+          Value: false
+        zed_left_camera_frame_optical:
+          Value: false
+        zed_mag_link:
+          Value: false
+        zed_right_camera_frame:
+          Value: false
+        zed_right_camera_frame_optical:
+          Value: false
+        zed_temp_left_link:
+          Value: false
+        zed_temp_right_link:
+          Value: false
       Marker Scale: 1
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: true
       Tree:
-        {}
+        odom:
+          base_link:
+            base_footprint:
+              {}
+            default_mount:
+              laser:
+                {}
+            front_bumper_mount:
+              front_bumper_base_link:
+                front_bumper_link:
+                  {}
+            front_left_wheel:
+              {}
+            front_right_wheel:
+              {}
+            inertial_link:
+              {}
+            rear_bumper_mount:
+              rear_bumper_base_link:
+                rear_bumper_link:
+                  {}
+            rear_left_wheel:
+              {}
+            rear_right_wheel:
+              {}
+            top_chassis_link:
+              {}
+            visual_odom:
+              {}
+            zed_camera_link:
+              zed_camera_center:
+                zed_baro_link:
+                  {}
+                zed_left_camera_frame:
+                  zed_left_camera_frame_optical:
+                    {}
+                  zed_temp_left_link:
+                    {}
+                zed_mag_link:
+                  {}
+                zed_right_camera_frame:
+                  zed_right_camera_frame_optical:
+                    {}
+                  zed_temp_right_link:
+                    {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -219,7 +285,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    Fixed Frame: camera_odom
+    Fixed Frame: visual_odom
     Frame Rate: 30
   Name: root
   Tools:
@@ -277,10 +343,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.4847971200942993
+      Pitch: 1.0297975540161133
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.478861093521118
+      Yaw: 3.30886173248291
     Saved: ~
 Window Geometry:
   Displays:
