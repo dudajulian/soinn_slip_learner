@@ -11,7 +11,7 @@ elevation_mapping:
         type: perfect
         ignore_points_above: 1.0
         ignore_points_below: -1.0
-    map_frame_id: "camera_odom" # This should be the same as the reference odometry frame.
+    map_frame_id: "visual_odom" # This should be the same as the reference odometry frame.
     robot_base_frame_id: "base_link" # When testing only the ZED camera use "zed_camera_link" instead.
     robot_pose_with_covariance_topic: "" # Leaving this empty skipps pose covariance updates.
     robot_pose_cache_size: 200
