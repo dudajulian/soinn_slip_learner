@@ -15,13 +15,15 @@ public:
   CameraOdomRepublisherNode()
   : Node("camera_odom_republisher") {
     this->declare_parameter("input_topic", "/camera/odom");
-    this->declare_parameter("output_topic", "/camera/odom_base_frame");
+    this->declare_parameter("output_topic", "/camera/odom_republished");
     this->declare_parameter("base_frame", "base_link");
-    this->declare_parameter("publish_tf", false);
+    this->declare_parameter("output_odom_frame", "visual_odom");
+    this->declare_parameter("publish_tf", true);
 
     this->get_parameter("input_topic", input_topic_);
     this->get_parameter("output_topic", output_topic_);
     this->get_parameter("base_frame", base_frame_);
+    this->get_parameter("output_odom_frame", output_odom_frame_);
     this->get_parameter("publish_tf", publish_tf_);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -36,8 +38,8 @@ public:
 
     RCLCPP_INFO(
       this->get_logger(),
-      "camera_odom_republisher started: input='%s', output='%s', base_frame='%s', publish_tf=%s",
-      input_topic_.c_str(), output_topic_.c_str(), base_frame_.c_str(), publish_tf_ ? "true" : "false");
+      "camera_odom_republisher started: input='%s', output='%s', base_frame='%s', output_odom_frame='%s', publish_tf=%s",
+      input_topic_.c_str(), output_topic_.c_str(), base_frame_.c_str(), output_odom_frame_.c_str(), publish_tf_ ? "true" : "false");
   }
 
 private:
@@ -111,6 +113,7 @@ private:
     republished_msg.twist.twist.angular.z = angular_base.z();
 
     republished_msg.child_frame_id = base_frame_;
+    republished_msg.header.frame_id = output_odom_frame_;
 
     publisher_->publish(republished_msg);
 
@@ -125,7 +128,7 @@ private:
       geometry_msgs::msg::TransformStamped base_to_odom_tf;
       base_to_odom_tf.header.stamp = republished_msg.header.stamp;
       base_to_odom_tf.header.frame_id = base_frame_;
-      base_to_odom_tf.child_frame_id = "camera_odom";
+      base_to_odom_tf.child_frame_id = output_odom_frame_;
       base_to_odom_tf.transform = tf2::toMsg(odom_to_base.inverse());
       tf_broadcaster_->sendTransform(base_to_odom_tf);
     }
@@ -134,7 +137,8 @@ private:
   std::string input_topic_;
   std::string output_topic_;
   std::string base_frame_;
-  bool publish_tf_{false};
+  std::string output_odom_frame_;
+  bool publish_tf_;
 
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
