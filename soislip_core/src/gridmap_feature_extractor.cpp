@@ -213,7 +213,6 @@ private:
     Eigen::Vector3f rgb;
     Eigen::Matrix3Xf colors(3, 0);
     Eigen::Matrix3Xf points(3, 0);
-    int cell_count = 0;
     // Use a radius that is at least 1.5 times the map resolution to ensure enough points are sampled
     double length_a = std::max(ellipse_a_, map.getResolution()*3.0);
     double length_b = std::max(ellipse_b_, map.getResolution()*3.0);
@@ -283,8 +282,8 @@ private:
     const float slope_deg = slope_rad * 180.0F / static_cast<float>(M_PI);
     const float slope_percent = slope_deg / robot_max_climbable_slope_deg_;
     // Optional roughness proxy:
-    const Eigen::Vector3f evals = eigensolver.eigenvalues();
-    const float roughness = evals(0);  // smaller is smoother
+    // const Eigen::Vector3f evals = eigensolver.eigenvalues();
+    // const float roughness = evals(0);  // smaller is smoother
     features.at(2) = slope_percent;
     // PRAGR'S FEATURES
     // Eigen::Vector3f eigenvalues = eigensolver.eigenvalues();
@@ -342,7 +341,10 @@ private:
     const float L = 116.0F * fy - 16.0F;
     const float a = 500.0F * (fx - fy);
     const float b_lab = 200.0F * (fy - fz);
-    return Eigen::Vector3f(L, a, b_lab);
+    return Eigen::Vector3f(
+      L / 100.0F,
+      (a + 86.2F) / (98.2F + 86.2F),
+      (b_lab + 107.9F) / (94.5F + 107.9F));
   }
 
   static float clamp01(float v) {
@@ -367,14 +369,18 @@ private:
     return (116.0F * t - 16.0F) / k;
   }
 
-  // Input: Lab a,b
+  // Input: normalized Lab a,b
   // Output: bright/saturated sRGB color in [0,1]
   static Eigen::Vector3f lab_to_rgb(
-    float a,
-    float b,
-    float L = 75.0F,          // brightness target (0..100)
+    float a_norm,
+    float b_norm,
+    float L_norm = 0.75F,      // brightness target (0..1)
     float target_chroma = 55.0F)  // saturation target in Lab
   {
+    const float L = L_norm * 100.0F;
+    float a = a_norm * (98.2F + 86.2F) - 86.2F;
+    float b = b_norm * (94.5F + 107.9F) - 107.9F;
+
     // Normalize chroma to a controlled saturation level.
     const float chroma = std::sqrt(a * a + b * b);
     if (chroma > 1e-6F) {

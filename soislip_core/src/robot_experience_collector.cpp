@@ -319,6 +319,7 @@ private:
     const std::string & source_frame,
     const rclcpp::Time & lookup_time)
   {
+    (void) lookup_time; // Unused parameter, but kept for potential future use or consistency with other methods.
     geometry_msgs::msg::TransformStamped stamped_tf;
     try {
       // stamped_tf = tf_buffer_->lookupTransform(robot_frame_, source_frame, lookup_time, rclcpp::Duration::from_seconds(odom_timeout_sec_));
