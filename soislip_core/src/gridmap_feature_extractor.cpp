@@ -116,8 +116,7 @@ private:
     response->success.data = true;
     response->message.data = "ok";
 
-    // Eigen::Vector3f rgb = lab_to_rgb(features.at(0), features.at(1));
-    Eigen::Vector3f rgb = Eigen::Vector3f(features.at(0), features.at(1), 1.0 - features.at(0) - features.at(1));  // Use a simple mapping for demonstration
+    Eigen::Vector3f rgb = lab_to_rgb(features.at(0), features.at(1));
     float color_value;
     grid_map::colorVectorToValue(rgb, color_value);
     {
@@ -236,7 +235,7 @@ private:
       }
       // Collect colors
       grid_map::colorValueToVector(map.at("color", *it), rgb);
-      if (!colors.array().isNaN().any()) {
+      if (!rgb.array().isNaN().any()) {
         colors.conservativeResize(Eigen::NoChange, colors.cols() + 1);
         colors.col(colors.cols() - 1) = rgb;
       }
@@ -374,20 +373,11 @@ private:
   static Eigen::Vector3f lab_to_rgb(
     float a_norm,
     float b_norm,
-    float L_norm = 0.75F,      // brightness target (0..1)
-    float target_chroma = 55.0F)  // saturation target in Lab
+    float L_norm = 0.75F)      // brightness target (0..1)
   {
     const float L = L_norm * 100.0F;
     float a = a_norm * (98.2F + 86.2F) - 86.2F;
     float b = b_norm * (94.5F + 107.9F) - 107.9F;
-
-    // Normalize chroma to a controlled saturation level.
-    const float chroma = std::sqrt(a * a + b * b);
-    if (chroma > 1e-6F) {
-      const float s = target_chroma / chroma;
-      a *= s;
-      b *= s;
-    }
 
     // Lab -> XYZ (D65)
     constexpr float Xn = 0.95047F;
