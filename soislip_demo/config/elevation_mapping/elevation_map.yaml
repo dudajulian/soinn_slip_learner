@@ -6,6 +6,6 @@ elevation_mapping:
     position_y: 0.0
     resolution: 0.05
     min_variance: 0.000009
-    max_variance: 0.01
+    max_variance: 0.0008
     mahalanobis_distance_threshold: 2.5
     multi_height_noise: 0.0000009
