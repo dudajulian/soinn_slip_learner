@@ -62,7 +62,7 @@ declare -A cmds=(
     joy_vel:=/tug_husky/cmd_vel" 
   [sample_recorder]="ros2 run soislip_core sample_recorder_node.py \
     -p sample_topic:=/experience_samples \
-    -p output_csv_path:='$SAMPLE_CSV'"
+    -p output_csv_path:=$SAMPLE_CSV"
 )
 
 # Keep startup order aligned with all.launch.py.
@@ -75,7 +75,7 @@ startup_order=(
   soislip
   # sample_recorder
   # rviz
-  # teleop_key
+  teleop_key
   # teleop_joy
 )
 

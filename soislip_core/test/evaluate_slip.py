@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import csv
+import os
+import pickle
 import sys
 from pathlib import Path
 
@@ -22,11 +24,12 @@ import data_loader as dl
 from soinn_py import SoinnPlus
 
 
-TEST_CSV = Path("/workspaces/vscode_ros2_workspace/resources/results/20260814_135840_sim_test_samples.csv")
-TRAIN_CSV = Path("/workspaces/vscode_ros2_workspace/resources/results/20260814_125520_sim_train_samples.csv")
+TEST_CSV = Path("/workspaces/vscode_ros2_workspace/src/soinn_slip_learner/soislip_demo/resources/data/260825_sim_test.csv")
+TRAIN_CSV = Path("/workspaces/vscode_ros2_workspace/src/soinn_slip_learner/soislip_demo/resources/data/260825_sim_train.csv")
 FEATURE_NAMES = ("a", "b", "slope")
-BOUNDARY_DISTANCE = 0.125
+BOUNDARY_DISTANCE = 0.35
 PLOT_OUTPUT = Path("/workspaces/vscode_ros2_workspace/resources/results/slip_slope_relationships.png")
+SOINN_OUTPUT = Path("/workspaces/vscode_ros2_workspace/resources/results/sim_model.pkl")
 
 REGIONS: tuple[tuple[str, float, float, float, float], ...] = (
     ("yellow", -8.0, 8.0, 4.9, 15.7),
@@ -147,6 +150,97 @@ def _predict_soinn(soinn: SoinnPlus, features: np.ndarray) -> np.ndarray:
     return predictions
 
 
+def _save_soinn_model(soinn: SoinnPlus, model_path: Path) -> None:
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = Path(f"{model_path}.tmp")
+    with tmp_path.open("wb") as file_handle:
+        pickle.dump(soinn, file_handle)
+        file_handle.flush()
+        os.fsync(file_handle.fileno())
+    os.replace(tmp_path, model_path)
+
+
+def _plot_soinn_network(soinn: SoinnPlus, output_path: Path) -> None:
+    if len(soinn.nodes) == 0:
+        print("Skipping network plot: no SOINN nodes available")
+        return
+
+    nodes_nparray = np.vstack(soinn.nodes)
+    # node_labels = np.array([p[0] if p[0] is not None else -0.1 for p in soinn.predictions], dtype=float)
+    node_labels = np.array([l if l is not None else -1 for l in soinn.labels], dtype=float)
+
+    figure = plt.figure(figsize=(8, 6))
+    axis = figure.add_subplot(111, projection="3d")
+
+    if nodes_nparray.shape[1] >= 3:
+        scatter = axis.scatter(
+            nodes_nparray[:, 0],
+            nodes_nparray[:, 1],
+            nodes_nparray[:, 2],
+            c=node_labels,
+            cmap="rainbow",
+            vmin=0.0,
+            vmax=1.0,
+            s=10,
+            alpha=0.9,
+        )
+        for node_index, neighbors in enumerate(soinn.adjacency_mat.rows):
+            for neighbor_index in neighbors:
+                if neighbor_index >= node_index:
+                    node_a = nodes_nparray[node_index]
+                    node_b = nodes_nparray[neighbor_index]
+                    axis.plot(
+                        [node_a[0], node_b[0]],
+                        [node_a[1], node_b[1]],
+                        [node_a[2], node_b[2]],
+                        color="black",
+                        linewidth=0.8,
+                        alpha=0.8,
+                    )
+        axis.set_xlabel("a")
+        axis.set_ylabel("b")
+        axis.set_zlabel("slope")
+    else:
+        scatter = axis.scatter(
+            nodes_nparray[:, 0],
+            nodes_nparray[:, 1],
+            node_labels,
+            c=node_labels,
+            cmap="viridis",
+            vmin=0.0,
+            vmax=1.0,
+            s=24,
+            alpha=0.9,
+        )
+        for node_index, neighbors in enumerate(soinn.adjacency_mat.rows):
+            for neighbor_index in neighbors:
+                if neighbor_index >= node_index:
+                    node_a = nodes_nparray[node_index]
+                    node_b = nodes_nparray[neighbor_index]
+                    axis.plot(
+                        [node_a[0], node_b[0]],
+                        [node_a[1], node_b[1]],
+                        [node_labels[node_index], node_labels[neighbor_index]],
+                        color="red",
+                        linewidth=0.8,
+                        alpha=0.8,
+                    )
+        axis.set_xlabel("x0")
+        axis.set_ylabel("x1")
+        axis.set_zlabel("label")
+
+    # axis.set_title("SOINN network")
+    colorbar = figure.colorbar(scatter, ax=axis, pad=0.04, shrink=0.82)
+    colorbar.set_label("Label")
+    colorbar.set_ticks([0.0, 0.5, 1.0])
+    figure.tight_layout()
+    plt.show()
+    # output_path.parent.mkdir(parents=True, exist_ok=True)
+    # figure.savefig(output_path, dpi=300)
+    # plt.close(figure)
+    # print(f"Saved network plot to: {output_path}")
+
+
 def _flatten_region_data(
     region_data: dict[str, tuple[np.ndarray, np.ndarray]],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
@@ -255,7 +349,7 @@ def _slip_slope_correlation_rows(
         slopes = x_test[valid_mask, 2]
         slips = y_test[valid_mask]
         spearman = spearmanr(slopes, slips)
-        rows.append((terrain_name, str(len(slopes)), _format_value(spearman.correlation), _format_value(spearman.pvalue)))
+        rows.append((terrain_name, str(len(slopes)), _format_value(spearman.correlation), f"{spearman.pvalue:.3e}"))
     return rows
 
 
@@ -323,6 +417,11 @@ def main() -> None:
     soinn = SoinnPlus(dim=len(FEATURE_NAMES))
     for feature, label in zip(x_train, y_train, strict=True):
         soinn.input_signal(feature, label=label)
+    _save_soinn_model(soinn, SOINN_OUTPUT)
+    print(f"Saved model to: {SOINN_OUTPUT}")
+    print(f"Nodes: {len(soinn.nodes)}")
+    print(f"Clusters: {soinn.count_clusters()}")
+    _plot_soinn_network(soinn, SOINN_OUTPUT.with_name("sim_model_network.png"))
 
     train_region_data = load_region_data(TRAIN_CSV)
     x_train, y_train, class_train, class_order = _flatten_region_data(train_region_data)

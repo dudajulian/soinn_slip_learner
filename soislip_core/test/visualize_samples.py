@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
 
-BOUNDARY_DISTANCE = 0.125
+BOUNDARY_DISTANCE = 0.35
 REGIONS: tuple[tuple[str, float, float, float, float, float], ...] = (
     # Format: (color_name, alpha, x_min, x_max, y_min, y_max)
     ("yellow", 0.2, -8.0, 8.0, 4.9, 15.7),
@@ -27,11 +27,16 @@ REGIONS: tuple[tuple[str, float, float, float, float, float], ...] = (
     ("blue", 0.1, -7.0, -4.175, -5.0, 5.0),
     ("grey", 0.2, -4.175, 4.175, -4.175, 4.9),
 )
+BOUNDARY_DISTANCE = 0.0
+REGIONS = (
+    ("green", 0.2, -3.0, -1.0, -1.3, 0.7),
+    # ("yellow", 0.2, -5.0, -3.0, -5.0, -1.3)
+)
 
 def _parse_args() -> argparse.Namespace:
     workspace_root = Path(__file__).resolve().parents[4]
-    # default_csv = workspace_root / "resources/results/20260814_125520_sim_train_samples.csv"
-    default_csv = workspace_root / "resources/results/20260814_135840_sim_test_samples.csv"
+    default_csv = workspace_root / "src/soinn_slip_learner/soislip_demo/resources/data/260825_sim_test.csv"
+    default_csv = workspace_root / "experience_samples.csv"
 
     parser = argparse.ArgumentParser(
         description=(
@@ -125,15 +130,19 @@ def main() -> None:
     # plt.title("Slip Samples in XY Space")
     plt.xlabel("x")
     plt.ylabel("y")
-    plt.xlim(-15, 15)
-    plt.ylim(-15, 5)
+    # plt.xlim(-15, 15)
+    # plt.ylim(-15, 5)
+    plt.xlim(-5, 1)
+    plt.ylim(-5, 1)
 
     
     plt.gca().set_aspect("equal", adjustable="box")
     plt.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
     plt.tight_layout()
-    x_ticks = list(range(-15, 16, 5))
-    y_ticks = list(range(-15, 6, 5))
+    # x_ticks = list(range(-15, 16, 5))
+    # y_ticks = list(range(-15, 6, 5))
+    x_ticks = list(range(-6, 2, 16))
+    y_ticks = list(range(-6, 2, 16))
     plt.xticks(x_ticks)
     plt.yticks(y_ticks)
 

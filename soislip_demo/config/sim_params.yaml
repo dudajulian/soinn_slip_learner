@@ -34,7 +34,7 @@ soinn_training_node:
 
 soinn_prediction_node:
   ros__parameters:
-    model_path: "/workspaces/vscode_ros2_workspace/src/soinn_slip_learner/soislip_demo/models/default_model.pkl"
+    model_path: "/workspaces/vscode_ros2_workspace/src/soinn_slip_learner/soislip_demo/models/sim_model.pkl"
     model_reload_period_sec: 20.0
 
 slip_prediction_manager:
